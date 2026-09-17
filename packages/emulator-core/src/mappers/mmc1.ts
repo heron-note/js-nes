@@ -148,8 +148,6 @@ export class Mmc1Mapper implements Mapper {
     }
   }
 
-  notifyScanline(_renderingEnabled: boolean): void {}
-
   irqPending(): boolean {
     return false;
   }

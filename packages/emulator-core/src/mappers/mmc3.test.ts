@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { Nes } from "../nes.js";
+import { Ppu2C02, type PpuBus } from "../ppu.js";
 import { buildTestRom } from "../testing/rom-builder.js";
 import { Asm } from "../testing/mini-asm.js";
+import { Mmc3Mapper } from "./mmc3.js";
 
 function bankSelect(nes: Nes, register: number, prgModeBit: 0 | 1, chrModeBit: 0 | 1): void {
   nes.writeCpuMemory(0x8000, register | (prgModeBit << 6) | (chrModeBit << 7));
@@ -145,7 +147,10 @@ describe("Mmc3Mapper (Mapper 4)", () => {
   it("スキャンラインIRQ: ラッチ値ぶんのスキャンラインが経過すると実際にCPUのIRQハンドラへ飛ぶ", () => {
     // reset/IRQハンドラは実際にCPU $E000-$FFFF（最終バンク固定域）にロードするため、
     // 絶対アドレス計算（JMP/分岐オフセット）が正しくなるようoriginもそこに合わせる。
-    // reset: IRQラッチ=5・即reload・IRQ有効化・背景描画有効化してから無限ループ。
+    // reset: PPUCTRLでスプライトパターンテーブル=$1000・背景パターンテーブル=$0000に
+    // 設定（実機のA12エッジ駆動IRQは、背景とスプライトで異なるパターンテーブルを
+    // 使う構成でなければA12が一切トグルせず発火しない。ppu.tsのppuA12参照）。
+    // IRQラッチ=5・即reload・IRQ有効化・背景描画有効化してから無限ループ。
     // IRQハンドラ: RAMの$0010に目印(0x42)を書き、$E000への書き込みでIRQを確認(disable)してRTI。
     const asm = new Asm(0xe000);
     asm
@@ -154,8 +159,9 @@ describe("Mmc3Mapper (Mapper 4)", () => {
       .CLD()
       .LDX_IMM(0xff)
       .TXS()
-      .LDA_IMM(0x00)
+      .LDA_IMM(0x08) // スプライトパターンテーブル=$1000（背景は既定の$0000のまま）
       .STA_ABS(0x2000)
+      .LDA_IMM(0x00)
       .STA_ABS(0x2001)
       .label("vblankwait1")
       .BIT_ABS(0x2002)
@@ -169,7 +175,7 @@ describe("Mmc3Mapper (Mapper 4)", () => {
       .STA_ABS(0xc001) // 即reload
       .STA_ABS(0xe001) // IRQ有効化（値は無視される）
       .LDA_IMM(0b0000_1000)
-      .STA_ABS(0x2001) // 背景描画を有効化（notifyScanlineが呼ばれるようになる）
+      .STA_ABS(0x2001) // 背景描画を有効化（ppuA12が呼ばれるようになる）
       .CLI() // IRQマスクを解除（SEIしたままだとcpu.irq()が常にno-opになる）
       .label("forever")
       .JMP("forever");
@@ -197,5 +203,44 @@ describe("Mmc3Mapper (Mapper 4)", () => {
     for (let i = 0; i < 5; i++) nes.runFrame();
 
     expect(nes.readCpuMemory(0x0010)).toBe(0x42);
+  });
+
+  it("A12エッジはスキャンライン精度で発生し、IRQはラッチ値+1回目のエッジで正確に発火する（CPUを介さない直接検証）", () => {
+    // ppu-midframe-split.test.tsと同じ手法: CPU/ROMを介さずPpu2C02+Mmc3Mapperを直接
+    // dot単位で駆動し、CPU命令タイミングに左右されない厳密な検証を行う。
+    // 背景パターンテーブル=$0000・スプライトパターンテーブル=$1000の構成では、
+    // A12エッジ(ロー→ハイ)はレンダリング中の各ラインのdot 257で必ず1回だけ発生する
+    // （dot 1-256は背景フェッチでA12=0、dot 257-320はスプライトフェッチでA12=1、
+    // dot 321-340は次ラインの背景プリフェッチでA12=0に戻る）。
+    const mapper = new Mmc3Mapper(new Uint8Array(0x4000), new Uint8Array(0x2000), false);
+    const bus: PpuBus = {
+      ppuRead: (addr) => mapper.ppuRead(addr),
+      ppuWrite: (addr, value) => mapper.ppuWrite(addr, value),
+      ppuA12: (bit12) => mapper.ppuA12?.(bit12),
+    };
+    const ppu = new Ppu2C02(bus, () => "vertical");
+    ppu.reset();
+
+    ppu.cpuWrite(0x2000, 0x08); // スプライトパターンテーブル=$1000、背景は$0000のまま
+    ppu.cpuWrite(0x2005, 0x00);
+    ppu.cpuWrite(0x2005, 0x00);
+    ppu.cpuWrite(0x2001, 0b0000_1000); // 背景のみ有効化（レンダリング自体は有効になる）
+
+    mapper.cpuWrite(0xc000, 3); // IRQラッチ = 3
+    mapper.cpuWrite(0xc001, 0); // 即reload
+    mapper.cpuWrite(0xe001, 0); // IRQ有効化
+
+    // エッジの発生順: 1回目=reload(counter=3)、2回目=counter=2、3回目=counter=1、
+    // 4回目=counter=0→IRQ発火。最初のエッジはpre-renderライン(-1)のdot257で起きるため、
+    // 4回目はscanline=2のdot257で発火するはず。
+    let firstAssertAt: { scanline: number; cycle: number } | null = null;
+    for (let i = 0; i < 4 * 341 + 10 && !firstAssertAt; i++) {
+      const scanline = ppu.scanline;
+      const cycle = ppu.cycle;
+      ppu.tickOne();
+      if (mapper.irqPending()) firstAssertAt = { scanline, cycle };
+    }
+
+    expect(firstAssertAt).toEqual({ scanline: 2, cycle: 257 });
   });
 });

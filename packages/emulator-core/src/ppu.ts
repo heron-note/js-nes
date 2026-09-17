@@ -5,11 +5,12 @@ export interface PpuBus {
   ppuRead(addr: number): number;
   ppuWrite(addr: number, value: number): void;
   /**
-   * 可視スキャンライン1本ごとに呼ばれる（MMC3等、スキャンラインIRQカウンタを持つ
-   * マッパー向け）。実装しないテストダブル等のために任意項目とする。
-   * Phase 4でPPU A12エッジ駆動の`ppuA12`に置き換え予定（PPUのドット精度化プロジェクト参照）。
+   * 背景・スプライトのパターンテーブルフェッチ（$0000-$1FFF）のたびに、そのアドレスの
+   * bit12を通知する（MMC3等、PPU A12エッジ検出でスキャンラインIRQカウンタを駆動する
+   * マッパー向け）。ネームテーブル/属性テーブルフェッチは常にbit12=0のため通知しない。
+   * 実装しないテストダブル等のために任意項目とする。
    */
-  notifyScanline?(renderingEnabled: boolean): void;
+  ppuA12?(bit12: 0 | 1): void;
 }
 
 /**
@@ -75,6 +76,8 @@ export function transferVertical(v: number, t: number): number {
  * 反映される（ステータスバー分割等のラスタートリックに対応）。スプライトもPhase 3で
  * 二次OAM評価(dot 65)・パターンフェッチ(dot 257-320)・出力(dot 1-256、`compositeAndSetPixel`)
  * のドット単位パイプラインへ置き換え済み（8x16モードのデータデコードのみ未対応）。
+ * 背景・スプライトのパターンテーブルフェッチのたびに、そのアドレスのbit12を`PpuBus.ppuA12`
+ * 経由でマッパーへ通知する（Phase 4、MMC3等のA12エッジ駆動IRQカウンタ向け）。
  * PPUのドット精度化プロジェクト: C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md
  */
 export class Ppu2C02 {
@@ -362,9 +365,6 @@ export class Ppu2C02 {
       if (this.scanline === -1 && this.cycle === 280) this.v = transferVertical(this.v, this.t);
     }
 
-    if (isVisibleLine && this.cycle === 256) {
-      this.bus.notifyScanline?.(renderingEnabled);
-    }
     if (this.scanline === 241 && this.cycle === 1) {
       this.status |= 0x80;
       if (this.ctrl & 0x80) this.nmiRequested = true;
@@ -399,11 +399,15 @@ export class Ppu2C02 {
     } else if (phase === 5) {
       const bgPatternBase = this.ctrl & 0x10 ? 0x1000 : 0x0000;
       const fineY = (this.v >> 12) & 0x07;
-      this.ptLowLatch = this.ppuMemRead(bgPatternBase + this.ntLatch * 16 + fineY);
+      const addr = bgPatternBase + this.ntLatch * 16 + fineY;
+      this.ptLowLatch = this.ppuMemRead(addr);
+      this.bus.ppuA12?.(((addr >> 12) & 1) as 0 | 1);
     } else if (phase === 7) {
       const bgPatternBase = this.ctrl & 0x10 ? 0x1000 : 0x0000;
       const fineY = (this.v >> 12) & 0x07;
-      this.ptHighLatch = this.ppuMemRead(bgPatternBase + this.ntLatch * 16 + fineY + 8);
+      const addr = bgPatternBase + this.ntLatch * 16 + fineY + 8;
+      this.ptHighLatch = this.ppuMemRead(addr);
+      this.bus.ppuA12?.(((addr >> 12) & 1) as 0 | 1);
     }
   }
 
@@ -480,24 +484,30 @@ export class Ppu2C02 {
     }
   }
 
-  /** dot 257,265,...,313: 二次OAMスロット`slot`のパターンバイト(下位/上位)をフェッチする（8x8固定）。 */
+  /**
+   * dot 257,265,...,313: 二次OAMスロット`slot`のパターンバイト(下位/上位)をフェッチする（8x8固定）。
+   * 実機は未使用スロット（このスキャンラインに実際のスプライトが無い分）もタイル$FFとして
+   * 同じ8dot周期でフェッチし続ける（出力には使われないが、Phase 4のA12エッジ駆動MMC3 IRQは
+   * この「スプライトが少ない/皆無でも8回分のCHRフェッチが必ず起きる」性質に依存するため、
+   * ここで実際に`ppuMemRead`を呼んでおく必要がある）。
+   */
   private fetchSpritePattern(slot: number): void {
-    if (slot >= this.secondaryCount) {
-      this.spritePatternLo[slot] = 0;
-      this.spritePatternHi[slot] = 0;
-      return;
-    }
     const SPRITE_HEIGHT = 8; // 8x16モードのデータデコードは未対応（Phase 5）
     const spritePatternBase = this.ctrl & 0x08 ? 0x1000 : 0x0000;
+    const used = slot < this.secondaryCount;
     const nextScanline = this.scanline + 1;
-    const oamY = this.secondaryY[slot] ?? 0xff;
-    let row = nextScanline - (oamY + 1);
-    const flipV = ((this.secondaryAttr[slot] ?? 0) & 0x80) !== 0;
+    const oamY = used ? (this.secondaryY[slot] ?? 0xff) : 0xff;
+    let row = used ? nextScanline - (oamY + 1) : 0;
+    const flipV = used && ((this.secondaryAttr[slot] ?? 0) & 0x80) !== 0;
     if (flipV) row = SPRITE_HEIGHT - 1 - row;
-    const tileIndex = this.secondaryTile[slot] ?? 0;
+    const tileIndex = used ? (this.secondaryTile[slot] ?? 0) : 0xff;
     const patternAddr = spritePatternBase + tileIndex * 16 + row;
-    this.spritePatternLo[slot] = this.ppuMemRead(patternAddr);
-    this.spritePatternHi[slot] = this.ppuMemRead(patternAddr + 8);
+    const lo = this.ppuMemRead(patternAddr);
+    this.bus.ppuA12?.(((patternAddr >> 12) & 1) as 0 | 1);
+    const hi = this.ppuMemRead(patternAddr + 8);
+    this.bus.ppuA12?.((((patternAddr + 8) >> 12) & 1) as 0 | 1);
+    this.spritePatternLo[slot] = used ? lo : 0;
+    this.spritePatternHi[slot] = used ? hi : 0;
   }
 
   /** スプライト出力レジスタのスロット`slot`について、画面X座標`x`でのピクセル生値(0=透明)を返す。 */

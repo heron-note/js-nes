@@ -46,8 +46,6 @@ export class CnromMapper implements Mapper {
     return null;
   }
 
-  notifyScanline(_renderingEnabled: boolean): void {}
-
   irqPending(): boolean {
     return false;
   }

@@ -41,10 +41,6 @@ export class NromMapper implements Mapper {
     return null; // ミラーリングは常にiNESヘッダー任せ
   }
 
-  notifyScanline(_renderingEnabled: boolean): void {
-    // NROMにスキャンラインカウンタはない
-  }
-
   irqPending(): boolean {
     return false;
   }

@@ -29,7 +29,7 @@ export class Nes {
     const ppuBus: PpuBus = {
       ppuRead: (addr) => (this.mapper ? this.mapper.ppuRead(addr) : 0),
       ppuWrite: (addr, value) => this.mapper?.ppuWrite(addr, value),
-      notifyScanline: (renderingEnabled) => this.mapper?.notifyScanline(renderingEnabled),
+      ppuA12: (bit12) => this.mapper?.ppuA12?.(bit12),
     };
     this.cpu = new Cpu6502(cpuBus);
     this.ppu = new Ppu2C02(ppuBus, () => this.mapper?.getMirroringOverride() ?? this.headerMirroring);

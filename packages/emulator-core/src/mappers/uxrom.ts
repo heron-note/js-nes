@@ -48,8 +48,6 @@ export class UxromMapper implements Mapper {
     return null;
   }
 
-  notifyScanline(_renderingEnabled: boolean): void {}
-
   irqPending(): boolean {
     return false;
   }

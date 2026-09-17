@@ -25,11 +25,11 @@ export interface Mapper {
   getMirroringOverride(): Mirroring | null;
 
   /**
-   * 可視スキャンライン1本ごとに1回呼ばれる（PPUがドット単位でなくスキャンライン単位の
-   * バッチレンダラーであるため、実機のPPU A12エッジ検出の簡略近似として採用）。
-   * MMC3のスキャンラインIRQカウンタ以外のマッパーでは何もしない。
+   * PPUの背景/スプライトパターンテーブルフェッチのたびに、そのアドレスのbit12(A12)を
+   * 通知する（実機のPPU A12エッジ検出をそのまま再現）。MMC3のスキャンラインIRQカウンタ
+   * 以外のマッパーは実装不要（任意項目）。
    */
-  notifyScanline(renderingEnabled: boolean): void;
+  ppuA12?(bit12: 0 | 1): void;
 
   /** レベル型のIRQ線。CPU命令境界ごとにポーリングされる。 */
   irqPending(): boolean;

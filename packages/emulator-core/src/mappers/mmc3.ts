@@ -7,10 +7,9 @@ const PRG_RAM_SIZE = 0x2000;
  * Mapper 4（MMC3 / TxROM系）。
  * $8000-$9FFF(偶数)のbank-select ＋ 同範囲(奇数)のbank-dataでR0-R7の8つの内部バンク
  * レジスタを更新する。PRG/CHRとも「どちらの向きに固定/可変を割り当てるか」を
- * bank-selectのモードビットで入れ替えられる。スキャンラインIRQカウンタも持つ
- * （実機はPPU A12エッジで駆動するが、本PPUはスキャンライン単位のバッチレンダラーの
- * ため、Phase 0で追加したnotifyScanline()フック＝可視スキャンライン1本ごとの通知で
- * 近似する）。
+ * bank-selectのモードビットで入れ替えられる。スキャンラインIRQカウンタも持ち、
+ * 実機同様PPUのA12アドレスラインの立ち上がりエッジ（`ppuA12`、Phase 4）で駆動する。
+ * ノイズ除去用フィルタ（実機のRC回路の近似）はこのマッパー内で持つ。
  */
 export class Mmc3Mapper implements Mapper {
   private bankSelectReg = 0;
@@ -24,6 +23,11 @@ export class Mmc3Mapper implements Mapper {
   private reloadPending = false;
   private irqEnabled = false;
   private irqAsserted = false;
+
+  // --- A12エッジ検出フィルタ（実機のノイズ除去用RC回路の近似、Phase 4） ---
+  private lastA12: 0 | 1 = 0;
+  private a12LowRunLength = 0;
+  private static readonly A12_FILTER_DOTS = 8;
 
   private readonly prgRam = new Uint8Array(PRG_RAM_SIZE);
   private readonly prg8kBankCount: number;
@@ -149,11 +153,26 @@ export class Mmc3Mapper implements Mapper {
   }
 
   /**
-   * 可視スキャンライン1本ごとにカウンタをデクリメント（0またはreload予約中なら
-   * ラッチ値から再ロード）し、0に達した時点でIRQを要求する簡略モデル。
+   * PPUのA12アドレスライン（`ppuA12`、パターンテーブルフェッチのたびに呼ばれる）を監視し、
+   * 「一定dot数以上ローが続いた後のロー→ハイ遷移」だけをエッジとして数える
+   * （実機のノイズ除去用RC回路の近似）。背景パターンテーブル=$0000・スプライトパターン
+   * テーブル=$1000（またはその逆）に設定しておくと、このエッジがスキャンラインごとに
+   * 1回だけ発生する。
    */
-  notifyScanline(renderingEnabled: boolean): void {
-    if (!renderingEnabled) return;
+  ppuA12(bit12: 0 | 1): void {
+    if (bit12 === 0) {
+      this.a12LowRunLength++;
+    } else {
+      if (this.lastA12 === 0 && this.a12LowRunLength >= Mmc3Mapper.A12_FILTER_DOTS) {
+        this.clockIrqCounter();
+      }
+      this.a12LowRunLength = 0;
+    }
+    this.lastA12 = bit12;
+  }
+
+  /** カウンタをデクリメント（0またはreload予約中ならラッチ値から再ロード）し、0に達した時点でIRQを要求する。 */
+  private clockIrqCounter(): void {
     if (this.irqCounter === 0 || this.reloadPending) {
       this.irqCounter = this.irqLatch;
       this.reloadPending = false;

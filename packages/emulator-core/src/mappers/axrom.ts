@@ -47,8 +47,6 @@ export class AxromMapper implements Mapper {
     return this.screenB ? "single-screen-b" : "single-screen-a";
   }
 
-  notifyScanline(_renderingEnabled: boolean): void {}
-
   irqPending(): boolean {
     return false;
   }
