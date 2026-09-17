@@ -64,6 +64,13 @@ export function buildSmokeRom(): Uint8Array {
     .STA_ABS(0x2007)
     .LDA_IMM(SMOKE_ROM_FILL_PALETTE_INDEX)
     .STA_ABS(0x2007)
+    // $2006/$2007でのVRAM書き込みはPPUのv/tレジスタ（スクロール位置と共有）を
+    // 書き換えてしまうため、実機の作法どおり描画有効化の直前に$2000/$2005で
+    // スクロール位置を(ネームテーブル0, 0, 0)へ明示的にリセットする。
+    .LDA_IMM(0x00)
+    .STA_ABS(0x2000)
+    .STA_ABS(0x2005)
+    .STA_ABS(0x2005)
     // 背景描画を有効化
     .LDA_IMM(0b0000_1000)
     .STA_ABS(0x2001)

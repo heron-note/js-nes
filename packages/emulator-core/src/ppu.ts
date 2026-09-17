@@ -7,19 +7,72 @@ export interface PpuBus {
   /**
    * 可視スキャンライン1本ごとに呼ばれる（MMC3等、スキャンラインIRQカウンタを持つ
    * マッパー向け）。実装しないテストダブル等のために任意項目とする。
+   * Phase 4でPPU A12エッジ駆動の`ppuA12`に置き換え予定（PPUのドット精度化プロジェクト参照）。
    */
   notifyScanline?(renderingEnabled: boolean): void;
 }
 
 /**
- * Ricoh 2C02 (PPU) の簡易実装。
- * 背景（M1）とスプライト（M4、8x8固定・1ライン8枚制限・スプライト0ヒット対応）を描画する。
- * スキャンライン単位でまとめて描画する簡易レンダラー（サイクル精度のフェッチ順は再現しない）。
- * PPUSCROLL（$2005）によるスクロールに対応するが、「1スキャンラインごとにその時点の
- * スクロール値をラッチして適用する」簡略モデル（実機のloopy v/t/x/wレジスタのような
- * ドット単位の厳密な再現はしない）。フレーム内で複数回$2005を書き換える構成
- * （ステータスバー分割等）はスキャンライン境界でなら追従できるが、1スキャンライン内で
- * の書き換えには対応しない。
+ * loopy v/t レジスタ内のビット位置（実機2C02のPPUADDRレジスタレイアウト:
+ * 0yyy NNYY YYYX XXXX ― yyy=fine Y(12-14), NN=ネームテーブル選択(10-11),
+ * YYYYY=coarse Y(5-9), XXXXX=coarse X(0-4)）。
+ */
+const COARSE_X_MASK = 0x001f;
+const HORIZ_NAMETABLE_BIT = 0x0400;
+const VERT_NAMETABLE_BIT = 0x0800;
+const COARSE_Y_MASK = 0x03e0;
+const FINE_Y_MASK = 0x7000;
+const HORIZ_COPY_MASK = 0x041f; // coarse X + 水平ネームテーブルビット
+const VERT_COPY_MASK = 0x7be0; // fine Y + coarse Y + 垂直ネームテーブルビット
+
+/** dot 8,16,...ごとのcoarse Xインクリメント。31で0へラップし水平ネームテーブルを反転する。 */
+export function incrementCoarseX(v: number): number {
+  if ((v & COARSE_X_MASK) === COARSE_X_MASK) {
+    v &= ~COARSE_X_MASK;
+    v ^= HORIZ_NAMETABLE_BIT;
+  } else {
+    v += 1;
+  }
+  return v;
+}
+
+/** dot 256ごとのYインクリメント（fine Y→coarse Yの繰り上げ、coarse Y=29でネームテーブル反転）。 */
+export function incrementY(v: number): number {
+  if ((v & FINE_Y_MASK) !== FINE_Y_MASK) {
+    return v + 0x1000;
+  }
+  v &= ~FINE_Y_MASK;
+  let y = (v & COARSE_Y_MASK) >> 5;
+  if (y === 29) {
+    y = 0;
+    v ^= VERT_NAMETABLE_BIT;
+  } else if (y === 31) {
+    // アトリビュートテーブル領域まで来た場合の実機挙動: ネームテーブルは反転せずコピー
+    y = 0;
+  } else {
+    y += 1;
+  }
+  return (v & ~COARSE_Y_MASK) | (y << 5);
+}
+
+/** dot 257: 水平方向のスクロール位置(coarse X + 水平ネームテーブルビット)をtからvへコピーする。 */
+export function transferHorizontal(v: number, t: number): number {
+  return (v & ~HORIZ_COPY_MASK) | (t & HORIZ_COPY_MASK);
+}
+
+/** pre-renderラインのdot 280-304: 垂直方向のスクロール位置をtからvへコピーする。 */
+export function transferVertical(v: number, t: number): number {
+  return (v & ~VERT_COPY_MASK) | (t & VERT_COPY_MASK);
+}
+
+/**
+ * Ricoh 2C02 (PPU) の実装。
+ * 背景とスプライト（8x8固定・1ライン8枚制限・スプライト0ヒット対応）を描画する。
+ * スクロールは実機同様のloopy v/t/x/wレジスタ（上記の`increment*`/`transfer*`参照）で管理する。
+ * Phase 1時点では、水平/垂直コピーとYインクリメントをスキャンライン境界でまとめて適用する
+ * 暫定近似（背景はスキャンライン単位のバッチ描画のまま）。真のドット単位の
+ * フェッチ/シフトレジスタパイプラインはPhase 2で導入予定
+ * （PPUのドット精度化プロジェクト、C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md）。
  */
 export class Ppu2C02 {
   ctrl = 0;
@@ -31,13 +84,13 @@ export class Ppu2C02 {
   private readonly nametables = new Uint8Array(2048);
   private readonly paletteRam = new Uint8Array(32);
 
-  // $2005(PPUSCROLL)と$2006(PPUADDR)は実機同様1つの書き込みトグルを共有する
-  // （以前は別々のフィールドだったが、$2005を実装するにあたり実機仕様に合わせて統合した）。
-  private writeToggle: 0 | 1 = 0;
-  private vramAddr = 0;
+  // $2005(PPUSCROLL)と$2006(PPUADDR)は実機同様1つの書き込みトグル(w)を共有する。
+  // v/t/x/wは実機のloopyレジスタと同じ役割（このファイル先頭のincrementCoarseX等参照）。
+  private w: 0 | 1 = 0;
+  private v = 0;
+  private t = 0;
+  private fineX = 0;
   private dataBuffer = 0;
-  private scrollX = 0;
-  private scrollY = 0;
 
   scanline = -1;
   cycle = 0;
@@ -57,11 +110,11 @@ export class Ppu2C02 {
     this.mask = 0;
     this.status = 0;
     this.oamAddr = 0;
-    this.writeToggle = 0;
-    this.vramAddr = 0;
+    this.w = 0;
+    this.v = 0;
+    this.t = 0;
+    this.fineX = 0;
     this.dataBuffer = 0;
-    this.scrollX = 0;
-    this.scrollY = 0;
     this.scanline = -1;
     this.cycle = 0;
     this.frameComplete = false;
@@ -82,18 +135,18 @@ export class Ppu2C02 {
       case 0x2002: {
         const value = (this.status & 0xe0) | (this.dataBuffer & 0x1f);
         this.status &= ~0x80 & 0xff;
-        this.writeToggle = 0;
+        this.w = 0;
         return value;
       }
       case 0x2004:
         return this.oam[this.oamAddr] ?? 0;
       case 0x2007: {
         let data = this.dataBuffer;
-        this.dataBuffer = this.ppuMemRead(this.vramAddr);
-        if (this.vramAddr >= 0x3f00) {
+        this.dataBuffer = this.ppuMemRead(this.v);
+        if (this.v >= 0x3f00) {
           data = this.dataBuffer;
         }
-        this.vramAddr = (this.vramAddr + this.vramIncrement()) & 0x3fff;
+        this.v = (this.v + this.vramIncrement()) & 0x7fff;
         return data;
       }
       default:
@@ -102,42 +155,46 @@ export class Ppu2C02 {
   }
 
   cpuWrite(addr: number, value: number): void {
-    const v = value & 0xff;
+    const byte = value & 0xff;
     switch (addr & 0x2007) {
       case 0x2000:
-        this.ctrl = v;
+        this.ctrl = byte;
+        this.t = (this.t & 0xf3ff) | ((byte & 0x03) << 10);
         return;
       case 0x2001:
-        this.mask = v;
+        this.mask = byte;
         return;
       case 0x2003:
-        this.oamAddr = v;
+        this.oamAddr = byte;
         return;
       case 0x2004:
-        this.oam[this.oamAddr] = v;
+        this.oam[this.oamAddr] = byte;
         this.oamAddr = (this.oamAddr + 1) & 0xff;
         return;
       case 0x2005:
-        if (this.writeToggle === 0) {
-          this.scrollX = v;
-          this.writeToggle = 1;
+        if (this.w === 0) {
+          this.t = (this.t & 0xffe0) | (byte >> 3);
+          this.fineX = byte & 0x07;
+          this.w = 1;
         } else {
-          this.scrollY = v;
-          this.writeToggle = 0;
+          this.t = (this.t & 0x8fff) | ((byte & 0x07) << 12);
+          this.t = (this.t & 0xfc1f) | ((byte & 0xf8) << 2);
+          this.w = 0;
         }
         return;
       case 0x2006:
-        if (this.writeToggle === 0) {
-          this.vramAddr = ((v & 0x3f) << 8) | (this.vramAddr & 0x00ff);
-          this.writeToggle = 1;
+        if (this.w === 0) {
+          this.t = (this.t & 0x00ff) | ((byte & 0x3f) << 8);
+          this.w = 1;
         } else {
-          this.vramAddr = (this.vramAddr & 0xff00) | v;
-          this.writeToggle = 0;
+          this.t = (this.t & 0xff00) | byte;
+          this.v = this.t;
+          this.w = 0;
         }
         return;
       case 0x2007:
-        this.ppuMemWrite(this.vramAddr, v);
-        this.vramAddr = (this.vramAddr + this.vramIncrement()) & 0x3fff;
+        this.ppuMemWrite(this.v, byte);
+        this.v = (this.v + this.vramIncrement()) & 0x7fff;
         return;
       default:
         return;
@@ -205,10 +262,24 @@ export class Ppu2C02 {
 
   /** PPUを1ドット分進める。 */
   tickOne(): void {
+    const renderingEnabled = (this.mask & 0x18) !== 0;
+    const isRenderingLine = (this.scanline >= 0 && this.scanline < 240) || this.scanline === -1;
+
     if (this.scanline >= 0 && this.scanline < 240 && this.cycle === 1) {
       this.renderScanline(this.scanline);
-      const renderingEnabled = (this.mask & 0x18) !== 0;
       this.bus.notifyScanline?.(renderingEnabled);
+    }
+    // 実機のdot256(Yインクリメント)/dot257(水平コピー)/pre-renderのdot280-304(垂直コピー)を、
+    // Phase 1時点ではスキャンライン単位のバッチ描画に合わせて「そのスキャンラインの処理直後」に
+    // まとめて適用する暫定近似（真のドット精度の適用タイミングはPhase 2で導入）。
+    if (isRenderingLine && this.cycle === 1 && renderingEnabled) {
+      if (this.scanline >= 0 && this.scanline < 240) {
+        this.v = incrementY(this.v);
+      }
+      this.v = transferHorizontal(this.v, this.t);
+      if (this.scanline === -1) {
+        this.v = transferVertical(this.v, this.t);
+      }
     }
     if (this.scanline === 241 && this.cycle === 1) {
       this.status |= 0x80;
@@ -241,7 +312,7 @@ export class Ppu2C02 {
     const colorIndex = new Uint8Array(256).fill(backdrop);
 
     if (bgEnabled) {
-      this.computeBackgroundRow(y, bgPixelValue, colorIndex);
+      this.computeBackgroundRow(bgPixelValue, colorIndex);
     }
     if (spritesEnabled) {
       this.compositeSpritesRow(y, bgPixelValue, colorIndex);
@@ -254,51 +325,49 @@ export class Ppu2C02 {
   }
 
   /**
-   * $2000-$2FFFの4枚のネームテーブルを、水平2枚×垂直2枚の仮想512x480プレーンとして
-   * scrollX/scrollYぶんオフセットして読み出す（実機のスクロールによる折り返しと同じ見え方
-   * になる）。実際にどの物理バンクに書き込まれているかはnametableMirror()が別途解決する。
+   * このスキャンラインの背景256ピクセルを、loopy v レジスタ（coarse X/Y・fine Y・
+   * ネームテーブル選択ビット）とfine X(this.fineX)から計算する。
+   * coarse Y/fine Y/垂直ネームテーブルビットはこのスキャンラインの間ずっと固定（tickOne側で
+   * スキャンライン境界ごとに更新済み）で、coarse XだけをタイルごとにincrementCoarseX()で
+   * 進める。fine X分の端数を吸収するため、33タイル(264px)分を計算してから256pxへ切り出す
+   * （Phase 2で導入する背景シフトレジスタパイプラインと数学的に等価な結果になる）。
    */
-  private computeBackgroundRow(y: number, bgPixelValue: Uint8Array, colorIndex: Uint8Array): void {
+  private computeBackgroundRow(bgPixelValue: Uint8Array, colorIndex: Uint8Array): void {
     const bgPatternBase = this.ctrl & 0x10 ? 0x1000 : 0x0000;
-    const ntSelect = this.ctrl & 0x03;
-    const baseHorizBit = ntSelect & 1;
-    const baseVertBit = (ntSelect >> 1) & 1;
+    const fineY = (this.v >> 12) & 0x07;
 
-    const effectiveY = y + this.scrollY;
-    const vertFlip = Math.floor(effectiveY / 240) % 2;
-    const localY = effectiveY % 240;
-    const tileRow = localY >> 3;
-    const fineY = localY & 7;
+    const TILE_COUNT = 33;
+    const wideValue = new Uint8Array(TILE_COUNT * 8);
+    const wideGroup = new Uint8Array(TILE_COUNT * 8);
 
-    for (let x = 0; x < 256; x++) {
-      const effectiveX = (x + this.scrollX) & 0x1ff; // 0-511（2枚ぶんの仮想幅で折り返す）
-      const horizFlip = effectiveX >= 256 ? 1 : 0;
-      const localX = effectiveX & 0xff;
-      const tileCol = localX >> 3;
-      const fineX = localX & 7;
-
-      const finalHorizBit = baseHorizBit ^ horizFlip;
-      const finalVertBit = baseVertBit ^ vertFlip;
-      const baseNametable = 0x2000 + (finalVertBit * 2 + finalHorizBit) * 0x400;
-
-      const ntAddr = baseNametable + tileRow * 32 + tileCol;
+    let rowV = this.v;
+    for (let tileCol = 0; tileCol < TILE_COUNT; tileCol++) {
+      const ntAddr = 0x2000 | (rowV & 0x0fff);
       const tileIndex = this.ppuMemRead(ntAddr);
 
-      const attrAddr = baseNametable + 0x3c0 + Math.floor(tileRow / 4) * 8 + Math.floor(tileCol / 4);
+      const attrAddr = 0x23c0 | (rowV & 0x0c00) | ((rowV >> 4) & 0x38) | ((rowV >> 2) & 0x07);
       const attrByte = this.ppuMemRead(attrAddr);
-      const row2 = tileRow % 4 >= 2 ? 1 : 0;
-      const col2 = tileCol % 4 >= 2 ? 1 : 0;
-      const shift = row2 * 4 + col2 * 2;
+      const shift = ((rowV >> 4) & 4) | (rowV & 2);
       const paletteGroup = (attrByte >> shift) & 0x03;
 
       const patternAddr = bgPatternBase + tileIndex * 16 + fineY;
       const lo = this.ppuMemRead(patternAddr);
       const hi = this.ppuMemRead(patternAddr + 8);
-      const bit = 7 - fineX;
-      const pixelValue = (((hi >> bit) & 1) << 1) | ((lo >> bit) & 1);
 
+      for (let col = 0; col < 8; col++) {
+        const bit = 7 - col;
+        wideValue[tileCol * 8 + col] = (((hi >> bit) & 1) << 1) | ((lo >> bit) & 1);
+        wideGroup[tileCol * 8 + col] = paletteGroup;
+      }
+
+      rowV = incrementCoarseX(rowV);
+    }
+
+    for (let x = 0; x < 256; x++) {
+      const pixelValue = wideValue[x + this.fineX] ?? 0;
       bgPixelValue[x] = pixelValue;
       if (pixelValue !== 0) {
+        const paletteGroup = wideGroup[x + this.fineX] ?? 0;
         colorIndex[x] = (this.paletteRam[paletteGroup * 4 + pixelValue] ?? 0) & 0x3f;
       }
     }

@@ -111,6 +111,11 @@ export function buildSpriteTestRom(opts: SpriteRomOptions): Uint8Array {
     .LDA_IMM(spriteColor1)
     .STA_ABS(0x2007);
 
+  // $2006/$2007でのVRAM書き込みはPPUのv/tレジスタ（スクロール位置と共有）を書き換えて
+  // しまうため、実機の作法どおり描画有効化の直前に$2000/$2005でスクロール位置を
+  // (ネームテーブル0, 0, 0)へ明示的にリセットする。
+  asm.LDA_IMM(0x00).STA_ABS(0x2000).STA_ABS(0x2005).STA_ABS(0x2005);
+
   const mask = 0b0001_0000 | (opts.fillBackground ? 0b0000_1000 : 0);
   asm
     .LDA_IMM(mask)
