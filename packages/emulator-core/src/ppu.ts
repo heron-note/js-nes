@@ -72,8 +72,9 @@ export function transferVertical(v: number, t: number): number {
  * 背景はPhase 2で導入した真のドット単位フェッチ/シフトレジスタパイプライン
  * （`bgFetchStep`/`shiftBackgroundRegisters`/`sampleBackgroundPixel`）で描画するため、
  * フレーム内で`$2005`/`$2006`をミッドスキャンラインで書き換えれば即座に以降のピクセルへ
- * 反映される（ステータスバー分割等のラスタートリックに対応）。スプライトは引き続き
- * スキャンライン単位のバッチ合成（`compositeSpritesRow`、Phase 3で対応予定）。
+ * 反映される（ステータスバー分割等のラスタートリックに対応）。スプライトもPhase 3で
+ * 二次OAM評価(dot 65)・パターンフェッチ(dot 257-320)・出力(dot 1-256、`compositeAndSetPixel`)
+ * のドット単位パイプラインへ置き換え済み（8x16モードのデータデコードのみ未対応）。
  * PPUのドット精度化プロジェクト: C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md
  */
 export class Ppu2C02 {
@@ -105,9 +106,27 @@ export class Ppu2C02 {
   private bgAttribLoShift = 0;
   private bgAttribHiShift = 0;
   // このスキャンライン分の背景ピクセル生値/パレット解決済み色（ドット単位で埋めていき、
-  // スキャンライン末尾でスプライト合成・framebuffer書き込みに使う）。
+  // 同じdotでスプライト合成・framebuffer書き込みに使う）。
   private readonly rowBgPixelValue = new Uint8Array(256);
   private readonly rowColorIndex = new Uint8Array(256);
+
+  // --- スプライト評価/フェッチパイプライン（Phase 3） ---
+  // 二次OAM: dot 65でこのスキャンラインの間に「次のスキャンライン」向けに一括評価する
+  // （タイミング精度が意味を持つのはフェッチ側=A12エッジのため、評価自体は1回でまとめてよい）。
+  private secondaryCount = 0;
+  private readonly secondaryY = new Uint8Array(8);
+  private readonly secondaryTile = new Uint8Array(8);
+  private readonly secondaryAttr = new Uint8Array(8);
+  private readonly secondaryX = new Uint8Array(8);
+  private readonly secondaryIsZero = new Uint8Array(8);
+  // スプライト出力レジスタ: dot 257-320で二次OAMから確定・フェッチし、次スキャンラインの
+  // dot 1-256の出力に使う。インデックスが小さいほど優先度が高い（実機のOAM順）。
+  private spriteCount = 0;
+  private readonly spriteX = new Uint8Array(8);
+  private readonly spriteAttr = new Uint8Array(8);
+  private readonly spriteIsZero = new Uint8Array(8);
+  private readonly spritePatternLo = new Uint8Array(8);
+  private readonly spritePatternHi = new Uint8Array(8);
 
   scanline = -1;
   cycle = 0;
@@ -143,6 +162,18 @@ export class Ppu2C02 {
     this.bgAttribHiShift = 0;
     this.rowBgPixelValue.fill(0);
     this.rowColorIndex.fill(0);
+    this.secondaryCount = 0;
+    this.secondaryY.fill(0xff);
+    this.secondaryTile.fill(0);
+    this.secondaryAttr.fill(0);
+    this.secondaryX.fill(0xff);
+    this.secondaryIsZero.fill(0);
+    this.spriteCount = 0;
+    this.spriteX.fill(0xff);
+    this.spriteAttr.fill(0);
+    this.spriteIsZero.fill(0);
+    this.spritePatternLo.fill(0);
+    this.spritePatternHi.fill(0);
     this.scanline = -1;
     this.cycle = 0;
     this.frameComplete = false;
@@ -293,7 +324,8 @@ export class Ppu2C02 {
    * （dot 1-256・321-336でのNT/AT/パターンバイトフェッチ、毎dotのシフト、dot 1-256での
    * 1ピクセルずつのサンプリング）で描画するため、フレーム内で`$2005`/`$2006`/`$2000`を
    * ミッドスキャンラインで書き換えれば、以降のdotのフェッチ・サンプルへ即座に反映される。
-   * スプライトは引き続きスキャンライン単位のバッチ合成（Phase 3で対応予定）。
+   * スプライトもdot 65で次スキャンライン向けの二次OAM評価、dot 257-320でパターンフェッチ、
+   * dot 1-256で背景との合成・framebuffer書き込みを行うドット単位パイプラインで動作する。
    */
   tickOne(): void {
     const renderingEnabled = (this.mask & 0x18) !== 0;
@@ -304,9 +336,11 @@ export class Ppu2C02 {
     const inFetchWindow = (this.cycle >= 1 && this.cycle <= 256) || (this.cycle >= 321 && this.cycle <= 336);
 
     // サンプリングは常にシフト/フェッチより先（このdotのシフトレジスタが「まだシフトされて
-    // いない」状態を使う）。
+    // いない」状態を使う）。背景・スプライトの合成とframebuffer書き込みも同じdotで行う。
     if (isVisibleLine && this.cycle >= 1 && this.cycle <= 256) {
-      this.sampleBackgroundPixel(this.cycle - 1, bgEnabled);
+      const x = this.cycle - 1;
+      this.sampleBackgroundPixel(x, bgEnabled);
+      this.compositeAndSetPixel(x, this.scanline, spritesEnabled);
     }
 
     if (isRenderingLine && renderingEnabled && inFetchWindow) {
@@ -318,13 +352,17 @@ export class Ppu2C02 {
       }
     }
     if (isRenderingLine && renderingEnabled) {
+      if (this.cycle === 65) this.evaluateSprites();
+      if (this.cycle === 257) this.commitSpriteOutputRegisters();
+      if (this.cycle >= 257 && this.cycle <= 320 && (this.cycle - 257) % 8 === 0) {
+        this.fetchSpritePattern((this.cycle - 257) / 8);
+      }
       if (this.cycle === 256) this.v = incrementY(this.v);
       if (this.cycle === 257) this.v = transferHorizontal(this.v, this.t);
       if (this.scanline === -1 && this.cycle === 280) this.v = transferVertical(this.v, this.t);
     }
 
     if (isVisibleLine && this.cycle === 256) {
-      this.finishScanline(this.scanline, spritesEnabled);
       this.bus.notifyScanline?.(renderingEnabled);
     }
     if (this.scanline === 241 && this.cycle === 1) {
@@ -401,76 +439,111 @@ export class Ppu2C02 {
     }
   }
 
-  /** dot 256（このスキャンラインの256ピクセル全てサンプル済み）で、スプライト合成とframebuffer書き込みを行う。 */
-  private finishScanline(y: number, spritesEnabled: boolean): void {
-    const backdrop = (this.paletteRam[0] ?? 0) & 0x3f;
-    const colorIndex = new Uint8Array(256);
-    for (let x = 0; x < 256; x++) {
-      colorIndex[x] = this.rowBgPixelValue[x] === 0 ? backdrop : (this.rowColorIndex[x] ?? backdrop);
+  /**
+   * dot 65: 「次のスキャンライン」向けの二次OAM評価。1スキャンラインあたり最大8枚
+   * （実機の制限。9枚目以降の在圏ヒットで`status`のoverflowビット(bit5)を立てる）。
+   * 実機の「対角読み出しバグ」までは再現しない、評価件数ベースの素朴な実装
+   * （ホームブリュー向けであり、バグに依存するROMは対象外という既存方針と一貫）。
+   */
+  private evaluateSprites(): void {
+    const nextScanline = this.scanline + 1;
+    const spriteHeight = this.ctrl & 0x20 ? 16 : 8; // 8x16選択の判定のみ先取り（デコードはPhase 5）
+    this.secondaryCount = 0;
+    let overflow = false;
+    for (let i = 0; i < 64; i++) {
+      const base = i * 4;
+      const oamY = this.oam[base] ?? 0xff;
+      const row = nextScanline - (oamY + 1);
+      if (row < 0 || row >= spriteHeight) continue;
+      if (this.secondaryCount < 8) {
+        const slot = this.secondaryCount;
+        this.secondaryY[slot] = oamY;
+        this.secondaryTile[slot] = this.oam[base + 1] ?? 0;
+        this.secondaryAttr[slot] = this.oam[base + 2] ?? 0;
+        this.secondaryX[slot] = this.oam[base + 3] ?? 0;
+        this.secondaryIsZero[slot] = i === 0 ? 1 : 0;
+        this.secondaryCount++;
+      } else {
+        overflow = true;
+      }
     }
-    if (spritesEnabled) {
-      this.compositeSpritesRow(y, this.rowBgPixelValue, colorIndex);
-    }
-    for (let x = 0; x < 256; x++) {
-      const rgb = NES_PALETTE[(colorIndex[x] ?? backdrop) & 0x3f] ?? 0;
-      this.setPixel(x, y, rgb);
+    if (overflow) this.status |= 0x20;
+  }
+
+  /** dot 257: 直前のdot65評価結果をスプライト出力レジスタへ確定コピーする（次スキャンラインの出力用）。 */
+  private commitSpriteOutputRegisters(): void {
+    this.spriteCount = this.secondaryCount;
+    for (let i = 0; i < 8; i++) {
+      this.spriteX[i] = this.secondaryX[i] ?? 0xff;
+      this.spriteAttr[i] = this.secondaryAttr[i] ?? 0;
+      this.spriteIsZero[i] = this.secondaryIsZero[i] ?? 0;
     }
   }
 
-  /**
-   * スプライト（8x8固定）を合成する。
-   * - 1スキャンラインあたり最大8枚（実機の制限を再現。9枚目以降は評価を打ち切る）
-   * - OAMインデックスが小さいスプライトほど手前に描画される
-   * - 属性バイトのbit5（背景優先）が立っている場合、不透明な背景の上には描画しない
-   * - スプライト0と不透明な背景が重なった場所でスプライト0ヒットフラグ($2002 bit6)を立てる
-   */
-  private compositeSpritesRow(y: number, bgPixelValue: Uint8Array, colorIndex: Uint8Array): void {
-    const SPRITE_HEIGHT = 8; // 8x16モードは未対応
+  /** dot 257,265,...,313: 二次OAMスロット`slot`のパターンバイト(下位/上位)をフェッチする（8x8固定）。 */
+  private fetchSpritePattern(slot: number): void {
+    if (slot >= this.secondaryCount) {
+      this.spritePatternLo[slot] = 0;
+      this.spritePatternHi[slot] = 0;
+      return;
+    }
+    const SPRITE_HEIGHT = 8; // 8x16モードのデータデコードは未対応（Phase 5）
     const spritePatternBase = this.ctrl & 0x08 ? 0x1000 : 0x0000;
-    const spriteDrawn = new Uint8Array(256);
+    const nextScanline = this.scanline + 1;
+    const oamY = this.secondaryY[slot] ?? 0xff;
+    let row = nextScanline - (oamY + 1);
+    const flipV = ((this.secondaryAttr[slot] ?? 0) & 0x80) !== 0;
+    if (flipV) row = SPRITE_HEIGHT - 1 - row;
+    const tileIndex = this.secondaryTile[slot] ?? 0;
+    const patternAddr = spritePatternBase + tileIndex * 16 + row;
+    this.spritePatternLo[slot] = this.ppuMemRead(patternAddr);
+    this.spritePatternHi[slot] = this.ppuMemRead(patternAddr + 8);
+  }
 
-    let evaluated = 0;
-    for (let i = 0; i < 64 && evaluated < 8; i++) {
-      const base = i * 4;
-      const oamY = this.oam[base] ?? 0xff;
-      const spriteTop = oamY + 1;
-      const row = y - spriteTop;
-      if (row < 0 || row >= SPRITE_HEIGHT) continue;
-      evaluated++;
+  /** スプライト出力レジスタのスロット`slot`について、画面X座標`x`でのピクセル生値(0=透明)を返す。 */
+  private spritePixelValueAt(slot: number, x: number): number {
+    const spriteX = this.spriteX[slot] ?? 0xff;
+    const col = x - spriteX;
+    if (col < 0 || col >= 8) return 0;
+    const attr = this.spriteAttr[slot] ?? 0;
+    const flipH = (attr & 0x40) !== 0;
+    const bit = flipH ? col : 7 - col;
+    const lo = this.spritePatternLo[slot] ?? 0;
+    const hi = this.spritePatternHi[slot] ?? 0;
+    return (((hi >> bit) & 1) << 1) | ((lo >> bit) & 1);
+  }
 
-      const tileIndex = this.oam[base + 1] ?? 0;
-      const attr = this.oam[base + 2] ?? 0;
-      const spriteX = this.oam[base + 3] ?? 0;
-      const flipH = (attr & 0x40) !== 0;
-      const flipV = (attr & 0x80) !== 0;
-      const behindBg = (attr & 0x20) !== 0;
-      const paletteGroup = attr & 0x03;
+  /**
+   * 背景ピクセル(既にsampleBackgroundPixelでrowBgPixelValue/rowColorIndexへ書き込み済み)と
+   * スプライト出力レジスタを合成し、このdotのframebufferピクセルを確定する。
+   * - OAMインデックスが小さいスプライトほど手前（スロット0から順に探し、最初の不透明画素で確定）
+   * - 属性バイトのbit5（背景優先）が立っている場合、不透明な背景の上には描画しない
+   * - スプライト0ヒット判定は、実際に描画されるかどうかとは独立に行う（実機どおり）
+   */
+  private compositeAndSetPixel(x: number, y: number, spritesEnabled: boolean): void {
+    const backdrop = (this.paletteRam[0] ?? 0) & 0x3f;
+    const bgPixelValue = this.rowBgPixelValue[x] ?? 0;
+    let colorIndex = bgPixelValue === 0 ? backdrop : (this.rowColorIndex[x] ?? backdrop);
 
-      const patternRow = flipV ? SPRITE_HEIGHT - 1 - row : row;
-      const patternAddr = spritePatternBase + tileIndex * 16 + patternRow;
-      const lo = this.ppuMemRead(patternAddr);
-      const hi = this.ppuMemRead(patternAddr + 8);
-
-      for (let col = 0; col < 8; col++) {
-        const px = spriteX + col;
-        if (px > 255) continue;
-        const bit = flipH ? col : 7 - col;
-        const pixelValue = (((hi >> bit) & 1) << 1) | ((lo >> bit) & 1);
+    if (spritesEnabled) {
+      if (this.spriteCount > 0 && this.spriteIsZero[0] === 1 && bgPixelValue !== 0) {
+        if (this.spritePixelValueAt(0, x) !== 0) this.status |= 0x40;
+      }
+      for (let i = 0; i < this.spriteCount; i++) {
+        const pixelValue = this.spritePixelValueAt(i, x);
         if (pixelValue === 0) continue;
-
-        const bgOpaque = (bgPixelValue[px] ?? 0) !== 0;
-        if (i === 0 && bgOpaque) {
-          this.status |= 0x40;
+        const attr = this.spriteAttr[i] ?? 0;
+        const behindBg = (attr & 0x20) !== 0;
+        if (!(behindBg && bgPixelValue !== 0)) {
+          const paletteGroup = attr & 0x03;
+          colorIndex = (this.paletteRam[0x10 + paletteGroup * 4 + pixelValue] ?? 0) & 0x3f;
         }
-
-        if (spriteDrawn[px]) continue; // 手前のスプライトが既にこの画素を描画済み
-        spriteDrawn[px] = 1;
-
-        if (behindBg && bgOpaque) continue; // 背景優先設定 かつ 背景が不透明ならスプライトは隠れる
-
-        colorIndex[px] = (this.paletteRam[0x10 + paletteGroup * 4 + pixelValue] ?? 0) & 0x3f;
+        break; // 手前のスプライトが確定した時点で、それより奥のスプライトは無視（実機どおり）
       }
     }
+
+    const rgb = NES_PALETTE[colorIndex & 0x3f] ?? 0;
+    this.setPixel(x, y, rgb);
   }
 
   private setPixel(x: number, y: number, rgb: number): void {
