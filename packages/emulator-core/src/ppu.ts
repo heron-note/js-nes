@@ -68,14 +68,15 @@ export function transferVertical(v: number, t: number): number {
 
 /**
  * Ricoh 2C02 (PPU) の実装。
- * 背景とスプライト（8x8固定・1ライン8枚制限・スプライト0ヒット対応）を描画する。
+ * 背景とスプライト（8x8/8x16・1ライン8枚制限・スプライト0ヒット対応）を描画する。
  * スクロールは実機同様のloopy v/t/x/wレジスタ（上記の`increment*`/`transfer*`参照）で管理する。
  * 背景はPhase 2で導入した真のドット単位フェッチ/シフトレジスタパイプライン
  * （`bgFetchStep`/`shiftBackgroundRegisters`/`sampleBackgroundPixel`）で描画するため、
  * フレーム内で`$2005`/`$2006`をミッドスキャンラインで書き換えれば即座に以降のピクセルへ
  * 反映される（ステータスバー分割等のラスタートリックに対応）。スプライトもPhase 3で
  * 二次OAM評価(dot 65)・パターンフェッチ(dot 257-320)・出力(dot 1-256、`compositeAndSetPixel`)
- * のドット単位パイプラインへ置き換え済み（8x16モードのデータデコードのみ未対応）。
+ * のドット単位パイプラインへ置き換え済み。8x16モード（Phase 5、`fetchSpritePattern`参照）は
+ * タイル番号のbit0でパターンテーブルを選択し、垂直反転時は上下のタイル自体も入れ替わる。
  * 背景・スプライトのパターンテーブルフェッチのたびに、そのアドレスのbit12を`PpuBus.ppuA12`
  * 経由でマッパーへ通知する（Phase 4、MMC3等のA12エッジ駆動IRQカウンタ向け）。
  * PPUのドット精度化プロジェクト: C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md
@@ -451,7 +452,7 @@ export class Ppu2C02 {
    */
   private evaluateSprites(): void {
     const nextScanline = this.scanline + 1;
-    const spriteHeight = this.ctrl & 0x20 ? 16 : 8; // 8x16選択の判定のみ先取り（デコードはPhase 5）
+    const spriteHeight = this.ctrl & 0x20 ? 16 : 8; // 8x16モード（Phase 5、fetchSpritePattern参照）
     this.secondaryCount = 0;
     let overflow = false;
     for (let i = 0; i < 64; i++) {
@@ -485,23 +486,36 @@ export class Ppu2C02 {
   }
 
   /**
-   * dot 257,265,...,313: 二次OAMスロット`slot`のパターンバイト(下位/上位)をフェッチする（8x8固定）。
+   * dot 257,265,...,313: 二次OAMスロット`slot`のパターンバイト(下位/上位)をフェッチする。
    * 実機は未使用スロット（このスキャンラインに実際のスプライトが無い分）もタイル$FFとして
    * 同じ8dot周期でフェッチし続ける（出力には使われないが、Phase 4のA12エッジ駆動MMC3 IRQは
    * この「スプライトが少ない/皆無でも8回分のCHRフェッチが必ず起きる」性質に依存するため、
    * ここで実際に`ppuMemRead`を呼んでおく必要がある）。
+   * 8x16モード（`ctrl`bit5）では、パターンテーブルの選択自体がタイル番号のbit0で決まり
+   * （`ctrl`bit3は無視される）、上半分=タイル番号&0xFE・下半分=その次の番号を使う。
+   * 垂直反転時は上下の行順だけでなく、上半分/下半分のタイル自体も入れ替わる（実機どおり）。
    */
   private fetchSpritePattern(slot: number): void {
-    const SPRITE_HEIGHT = 8; // 8x16モードのデータデコードは未対応（Phase 5）
-    const spritePatternBase = this.ctrl & 0x08 ? 0x1000 : 0x0000;
+    const spriteHeight = this.ctrl & 0x20 ? 16 : 8;
     const used = slot < this.secondaryCount;
     const nextScanline = this.scanline + 1;
     const oamY = used ? (this.secondaryY[slot] ?? 0xff) : 0xff;
     let row = used ? nextScanline - (oamY + 1) : 0;
     const flipV = used && ((this.secondaryAttr[slot] ?? 0) & 0x80) !== 0;
-    if (flipV) row = SPRITE_HEIGHT - 1 - row;
+    if (flipV) row = spriteHeight - 1 - row;
     const tileIndex = used ? (this.secondaryTile[slot] ?? 0) : 0xff;
-    const patternAddr = spritePatternBase + tileIndex * 16 + row;
+
+    let patternAddr: number;
+    if (spriteHeight === 16) {
+      const patternTable = tileIndex & 0x01 ? 0x1000 : 0x0000;
+      const tileBase = tileIndex & 0xfe;
+      const tile = row < 8 ? tileBase : tileBase + 1;
+      patternAddr = patternTable + tile * 16 + (row & 0x07);
+    } else {
+      const spritePatternBase = this.ctrl & 0x08 ? 0x1000 : 0x0000;
+      patternAddr = spritePatternBase + tileIndex * 16 + row;
+    }
+
     const lo = this.ppuMemRead(patternAddr);
     this.bus.ppuA12?.(((patternAddr >> 12) & 1) as 0 | 1);
     const hi = this.ppuMemRead(patternAddr + 8);
