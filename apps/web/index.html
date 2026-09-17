@@ -72,6 +72,18 @@
               </p>
               <button id="reload-btn">スモークテストROMを再読み込み</button>
 
+              <h3 style="margin-top: 24px">プロジェクトの保存/読込</h3>
+              <p class="muted">
+                「コード」タブのDSLと「ドット絵」タブのタイルは、ビルドするたびにブラウザ内(localStorage)へ
+                自動保存され、次回このページを開いたときに自動で復元されます。
+                別のPCへ移したり、バックアップを取りたい場合はJSONファイルとして書き出し/読み込みできます。
+              </p>
+              <div class="code-actions">
+                <button id="project-export-btn">プロジェクトをエクスポート(JSON)</button>
+                <input id="project-import-input" type="file" accept="application/json,.json" />
+                <span id="project-io-status" class="muted"></span>
+              </div>
+
               <h3 style="margin-top: 24px">外部の.nesファイルを読み込む</h3>
               <p class="muted">
                 自作ROM以外に、Mapper 0/1/2/3/4/7対応の.nesファイル（ホームブリュー等、権利的に問題のないもの）を

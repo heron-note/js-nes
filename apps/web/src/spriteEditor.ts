@@ -32,6 +32,26 @@ export function getTiles(): Uint8Array[] {
   return tiles;
 }
 
+/**
+ * 保存されたプロジェクトのタイルデータを読み込む（Phase 5: プロジェクトデータモデル・永続化）。
+ * `tiles`配列自体（256枚固定）は差し替えず、中身だけを上書きする。
+ * `initSpriteEditor()`より後に呼ぶこと（DOM未初期化の場合は再描画をスキップする）。
+ */
+export function setTiles(data: ArrayLike<ArrayLike<number>>): void {
+  for (let i = 0; i < TILE_COUNT; i++) {
+    const src = data[i];
+    const dst = tiles[i]!;
+    for (let p = 0; p < PIXELS_PER_TILE; p++) {
+      const v = src?.[p];
+      dst[p] = typeof v === "number" ? v & 0x3 : 0;
+    }
+  }
+  if (sheetEl && editCtx) {
+    buildSheet();
+    renderEditCanvas();
+  }
+}
+
 let sheetEl: HTMLDivElement;
 let editEl: HTMLCanvasElement;
 let editCtx: CanvasRenderingContext2D;

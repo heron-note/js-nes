@@ -1,7 +1,15 @@
 import { BUTTON, Nes, buildSmokeRom, type ButtonName } from "@js-nes/emulator-core";
 import { compile } from "@js-nes/dsl-compiler";
 import { downloadRom, packChrRom, packINesRom } from "@js-nes/rom-builder";
-import { getTiles, initSpriteEditor } from "./spriteEditor.js";
+import { getTiles, initSpriteEditor, setTiles } from "./spriteEditor.js";
+import {
+  createProject,
+  loadProjectFromLocalStorage,
+  parseProject,
+  saveProjectToLocalStorage,
+  serializeProject,
+  ProjectFormatError,
+} from "./project.js";
 import { AudioEngine, noteIndexToLabel } from "./audio.js";
 import { downloadCanvasAsPng, renderCartridgeLabel } from "./cartridgeLabel.js";
 import { exportStandaloneHtml } from "./standaloneExport.js";
@@ -131,6 +139,13 @@ function buildAndRun(): void {
     statusEl!.textContent = "コードエディタのDSLコード + ドット絵エディタのCHRをコンパイルして実行中";
     buildStatus!.textContent = "ビルド成功";
     refreshCartridgeLabel();
+
+    // ビルド成功のたびにプロジェクト（コード+ドット絵）をlocalStorageへ自動保存する
+    // （Phase 5: これまで存在しなかった「プロジェクトの保存」を、ページ再読み込みをまたいで実現する）。
+    const project = createProject(codeEditor!.value, getTiles());
+    project.title = cartTitleInput!.value;
+    project.author = cartAuthorInput!.value;
+    saveProjectToLocalStorage(project);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     buildError!.hidden = false;
@@ -191,10 +206,64 @@ if (embeddedRomB64) {
   standaloneExportBtn.disabled = false;
   statusEl.textContent = "配布用HTMLに同梱されたROMを実行中";
 } else {
-  codeEditor.value = SAMPLE_SOURCE;
-  loadDemoRom();
+  // 埋め込みデータが無い通常起動時は、前回ビルド時に自動保存されたプロジェクトがあれば復元する。
+  const savedProject = loadProjectFromLocalStorage();
+  if (savedProject) {
+    codeEditor.value = savedProject.code;
+    setTiles(savedProject.tiles);
+    if (savedProject.title) cartTitleInput.value = savedProject.title;
+    if (savedProject.author) cartAuthorInput.value = savedProject.author;
+    buildAndRun();
+  } else {
+    codeEditor.value = SAMPLE_SOURCE;
+    loadDemoRom();
+  }
 }
 reloadBtn.addEventListener("click", loadDemoRom);
+
+// --- プロジェクトのエクスポート/インポート（JSON、Phase 5） ---
+const projectExportBtn = document.querySelector<HTMLButtonElement>("#project-export-btn");
+const projectImportInput = document.querySelector<HTMLInputElement>("#project-import-input");
+const projectIoStatus = document.querySelector<HTMLSpanElement>("#project-io-status");
+
+projectExportBtn?.addEventListener("click", () => {
+  const project = createProject(codeEditor!.value, getTiles());
+  project.title = cartTitleInput!.value;
+  project.author = cartAuthorInput!.value;
+  const blob = new Blob([serializeProject(project)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${cartTitleInput!.value || "project"}.famijs.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+  if (projectIoStatus) projectIoStatus.textContent = "エクスポート完了";
+});
+
+projectImportInput?.addEventListener("change", () => {
+  const file = projectImportInput.files?.[0];
+  if (!file || !projectIoStatus) return;
+  file
+    .text()
+    .then((text) => {
+      const project = parseProject(text);
+      codeEditor.value = project.code;
+      setTiles(project.tiles);
+      if (project.title) cartTitleInput.value = project.title;
+      if (project.author) cartAuthorInput.value = project.author;
+      buildAndRun();
+      projectIoStatus.textContent = `「${file.name}」を読み込みました`;
+    })
+    .catch((err: unknown) => {
+      const message = err instanceof ProjectFormatError ? err.message : err instanceof Error ? err.message : String(err);
+      projectIoStatus.textContent = `読み込み失敗: ${message}`;
+    });
+});
 
 // --- 外部の.nesファイルの読み込み（ホームブリュー等の動作確認用） ---
 const romUploadInput = document.querySelector<HTMLInputElement>("#rom-upload-input");
