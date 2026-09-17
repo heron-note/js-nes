@@ -115,6 +115,9 @@ export class Emitter {
   LDA_ZP(a: number): this {
     return this.emit(0xa5, a);
   }
+  LDX_ZP(a: number): this {
+    return this.emit(0xa6, a);
+  }
   STA_ZP(a: number): this {
     return this.emit(0x85, a);
   }
@@ -157,6 +160,12 @@ export class Emitter {
   }
   BIT_ABS(a: number): this {
     return this.emit(0x2c, a & 0xff, (a >> 8) & 0xff);
+  }
+  CMP_ABS(a: number): this {
+    return this.emit(0xcd, a & 0xff, (a >> 8) & 0xff);
+  }
+  CMP_ABS_X(a: number): this {
+    return this.emit(0xdd, a & 0xff, (a >> 8) & 0xff);
   }
 
   // --- branches / jumps (ラベル参照) ---

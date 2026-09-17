@@ -1,5 +1,24 @@
 import { Emitter } from "./emitter.js";
-import type { ArgExpr, AssignStmt, CallExpr, Cond, CompareOp, IfStmt, Program, Stmt, ValueExpr } from "./ast.js";
+import type {
+  ArgExpr,
+  AssignStmt,
+  BehaviorCallStmt,
+  CallExpr,
+  Cond,
+  CompareOp,
+  IfStmt,
+  MemberExpr,
+  PartAssignStmt,
+  PartAssignTarget,
+  PartCallExpr,
+  PartCond,
+  PartIfStmt,
+  PartStmt,
+  PartValueExpr,
+  Program,
+  Stmt,
+  ValueExpr,
+} from "./ast.js";
 import { buildPulsePeriodTable, buildTrianglePeriodTable, highBytes, lowBytes } from "./notes.js";
 
 /**
@@ -17,6 +36,21 @@ const SOUND_DUR_BASE = 0x07;
 const USER_VARS_START = 0x0b;
 
 const JUST_PRESSED_SUFFIX = "_just_pressed";
+
+/**
+ * DSL v1（シーン/パーツ構成モデル）専用のレイアウト定数。
+ * v0のみのソース（part/scene不使用）ではこの一帯は一切使われず、USER_VARS_STARTも
+ * 従来どおり0x0bのままなので、v0の出力はバイト単位で不変に保たれる。
+ * 詳細: C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md
+ */
+const CUR_INSTANCE_ZP = 0x0b; // 「今どのインスタンスを処理中か」を保持するスクラッチセル
+const V1_USER_VARS_START = 0x0c; // v1ではCUR_INSTANCEの分だけユーザー変数開始位置がシフトする
+const PART_RAM_START = 0x0300; // OAMシャドウ($0200-$02FF)の直後
+const PART_RAM_END = 0x0800; // 内蔵RAM末尾（$0800以降はミラー領域）
+
+function behaviorLabel(partType: string, behaviorName: string): string {
+  return `behavior_${partType}_${behaviorName}`;
+}
 
 /**
  * $4016 の8回シリアル読み出し順（A,B,Select,Start,Up,Down,Left,Right）を
@@ -49,8 +83,23 @@ const BUILTINS: Record<string, BuiltinDef> = {
 export class CodegenError extends Error {}
 
 export function generate(program: Program): Uint8Array {
+  const isV1 = program.parts.length > 0 || program.scenes.length > 0;
+
+  if (isV1) {
+    if (program.functions.length > 0) {
+      throw new CodegenError(
+        "part/sceneを使用する場合、トップレベルの function init/update は使用できません（sceneのinit/updateを使ってください）",
+      );
+    }
+    if (program.scenes.length !== 1) {
+      throw new CodegenError(
+        `sceneはちょうど1つ定義する必要があります（現在: ${program.scenes.length}個）。複数シーンの切り替えは未対応です`,
+      );
+    }
+  }
+
   const zp = new Map<string, number>();
-  let nextAddr = USER_VARS_START;
+  let nextAddr = isV1 ? V1_USER_VARS_START : USER_VARS_START;
   for (const g of program.globals) {
     if (zp.has(g.name)) {
       throw new CodegenError(`${g.line}行目: 変数 '${g.name}' が重複して宣言されています`);
@@ -64,10 +113,252 @@ export function generate(program: Program): Uint8Array {
     nextAddr++;
   }
 
-  const initFn = program.functions.find((f) => f.name === "init");
-  const updateFn = program.functions.find((f) => f.name === "update");
-  if (!initFn) throw new CodegenError("init() 関数が見つかりません（必須です）");
-  if (!updateFn) throw new CodegenError("update() 関数が見つかりません（必須です）");
+  // --- v1（シーン/パーツ構成モデル）専用: インスタンス配置とRAM(SoA)アロケーション ---
+  const scene = isV1 ? program.scenes[0]! : null;
+  const instanceInfo = new Map<string, { partType: string; index: number }>();
+  const partInstanceCount = new Map<string, number>();
+  const partFieldAddr = new Map<string, number>(); // key: `${partType}.${fieldName}` -> RAM先頭アドレス
+
+  if (isV1 && scene) {
+    for (const inst of scene.instances) {
+      if (instanceInfo.has(inst.name)) {
+        throw new CodegenError(`${inst.line}行目: インスタンス名 '${inst.name}' が重複しています`);
+      }
+      if (!program.parts.some((p) => p.name === inst.partType)) {
+        throw new CodegenError(`${inst.line}行目: 未知のパーツ種別 '${inst.partType}' が参照されています`);
+      }
+      const count = partInstanceCount.get(inst.partType) ?? 0;
+      instanceInfo.set(inst.name, { partType: inst.partType, index: count });
+      partInstanceCount.set(inst.partType, count + 1);
+    }
+
+    let ramAddr = PART_RAM_START;
+    for (const part of program.parts) {
+      // 未配置のパーツ種別も振る舞い自体はコンパイルする（未使用でもエラーにしない）ため、
+      // 最低1インスタンス分は必ず確保しておく。
+      const count = Math.max(partInstanceCount.get(part.name) ?? 0, 1);
+      for (const field of part.fields) {
+        if (ramAddr + count > PART_RAM_END) {
+          throw new CodegenError(`${field.line}行目: パーツ用のRAM（$0300-$07FF）が不足しました`);
+        }
+        partFieldAddr.set(`${part.name}.${field.name}`, ramAddr);
+        ramAddr += count;
+      }
+    }
+  }
+
+  function resolveGlobal(name: string, line: number): number {
+    const addr = zp.get(name);
+    if (addr === undefined) {
+      throw new CodegenError(`${line}行目: 未宣言の変数 '${name}' が使用されています`);
+    }
+    return addr;
+  }
+
+  function resolvePartFieldAddr(partType: string, fieldName: string, line: number): number {
+    const addr = partFieldAddr.get(`${partType}.${fieldName}`);
+    if (addr === undefined) {
+      throw new CodegenError(`${line}行目: パーツ '${partType}' にフィールド '${fieldName}' が見つかりません`);
+    }
+    return addr;
+  }
+
+  interface PartGenCtx {
+    /** behavior本体をコンパイル中はそのパーツ種別名、scene本体をコンパイル中はnull（selfは使えない）。 */
+    selfPartType: string | null;
+  }
+
+  function loadPartValueIntoA(v: PartValueExpr, ctx: PartGenCtx, line: number): void {
+    if (v.kind === "num") {
+      e.LDA_IMM(v.value);
+      return;
+    }
+    if (v.kind === "ident") {
+      e.LDA_ZP(resolveGlobal(v.name, line));
+      return;
+    }
+    if (v.object === "self") {
+      if (!ctx.selfPartType) {
+        throw new CodegenError(`${line}行目: 'self' はbehavior内でのみ使用できます`);
+      }
+      const base = resolvePartFieldAddr(ctx.selfPartType, v.property, line);
+      e.LDX_ZP(CUR_INSTANCE_ZP);
+      e.LDA_ABS_X(base);
+      return;
+    }
+    const inst = instanceInfo.get(v.object);
+    if (inst) {
+      const base = resolvePartFieldAddr(inst.partType, v.property, line);
+      e.LDA_ABS(base + inst.index);
+      return;
+    }
+    throw new CodegenError(`${line}行目: 未知のオブジェクト '${v.object}' が参照されています`);
+  }
+
+  function cmpPartValue(v: MemberExpr, ctx: PartGenCtx, line: number): void {
+    if (v.object === "self") {
+      if (!ctx.selfPartType) {
+        throw new CodegenError(`${line}行目: 'self' はbehavior内でのみ使用できます`);
+      }
+      const base = resolvePartFieldAddr(ctx.selfPartType, v.property, line);
+      e.LDX_ZP(CUR_INSTANCE_ZP);
+      e.CMP_ABS_X(base);
+      return;
+    }
+    const inst = instanceInfo.get(v.object);
+    if (inst) {
+      const base = resolvePartFieldAddr(inst.partType, v.property, line);
+      e.CMP_ABS(base + inst.index);
+      return;
+    }
+    throw new CodegenError(`${line}行目: 未知のオブジェクト '${v.object}' が参照されています`);
+  }
+
+  function storePartValueFromA(target: PartAssignTarget, ctx: PartGenCtx, line: number): void {
+    if (target.kind === "ident") {
+      e.STA_ZP(resolveGlobal(target.name, line));
+      return;
+    }
+    if (target.object === "self") {
+      if (!ctx.selfPartType) {
+        throw new CodegenError(`${line}行目: 'self' はbehavior内でのみ使用できます`);
+      }
+      const base = resolvePartFieldAddr(ctx.selfPartType, target.property, line);
+      e.LDX_ZP(CUR_INSTANCE_ZP);
+      e.STA_ABS_X(base);
+      return;
+    }
+    const inst = instanceInfo.get(target.object);
+    if (inst) {
+      const base = resolvePartFieldAddr(inst.partType, target.property, line);
+      e.STA_ABS(base + inst.index);
+      return;
+    }
+    throw new CodegenError(`${line}行目: 未知のオブジェクト '${target.object}' が参照されています`);
+  }
+
+  function genPartAssign(stmt: PartAssignStmt, ctx: PartGenCtx): void {
+    if (stmt.op === "=") {
+      loadPartValueIntoA(stmt.value, ctx, stmt.line);
+      storePartValueFromA(stmt.target, ctx, stmt.line);
+      return;
+    }
+    if (stmt.value.kind !== "num") {
+      throw new CodegenError(`${stmt.line}行目: '+=' / '-=' の右辺は数値リテラルのみ対応しています（v0の制約）`);
+    }
+    loadPartValueIntoA(stmt.target, ctx, stmt.line);
+    if (stmt.op === "+=") {
+      e.CLC();
+      e.ADC_IMM(stmt.value.value);
+    } else {
+      e.SEC();
+      e.SBC_IMM(stmt.value.value);
+    }
+    storePartValueFromA(stmt.target, ctx, stmt.line);
+  }
+
+  function genPartCondSkip(cond: PartCond, ctx: PartGenCtx, skipLabel: string): void {
+    if (cond.kind === "truthy") {
+      if (cond.expr.kind === "member" && cond.expr.object === "btn") {
+        const isJustPressed = cond.expr.property.endsWith(JUST_PRESSED_SUFFIX);
+        const buttonName = isJustPressed
+          ? cond.expr.property.slice(0, -JUST_PRESSED_SUFFIX.length)
+          : cond.expr.property;
+        const mask = BTN_BIT_MASK[buttonName];
+        if (mask === undefined) {
+          throw new CodegenError(`未知のボタン 'btn.${cond.expr.property}' が参照されています`);
+        }
+        if (isJustPressed) {
+          e.LDA_ZP(BTN_STATE_ZP);
+          e.EOR_ZP(BTN_STATE_PREV_ZP);
+          e.AND_ZP(BTN_STATE_ZP);
+        } else {
+          e.LDA_ZP(BTN_STATE_ZP);
+        }
+        e.AND_IMM(mask);
+        e.BEQ(skipLabel);
+        return;
+      }
+      loadPartValueIntoA(cond.expr, ctx, 0);
+      e.BEQ(skipLabel);
+      return;
+    }
+
+    loadPartValueIntoA(cond.left, ctx, 0);
+    if (cond.right.kind === "num") {
+      e.CMP_IMM(cond.right.value);
+    } else if (cond.right.kind === "ident") {
+      e.CMP_ZP(resolveGlobal(cond.right.name, 0));
+    } else {
+      cmpPartValue(cond.right, ctx, 0);
+    }
+    genCompareSkip(cond.op, skipLabel);
+  }
+
+  function genPartCall(call: PartCallExpr, ctx: PartGenCtx): void {
+    const def = BUILTINS[call.callee];
+    if (!def) {
+      throw new CodegenError(`${call.line}行目: 未知の関数 '${call.callee}' が呼び出されています`);
+    }
+    if (call.args.length !== def.arity) {
+      throw new CodegenError(
+        `${call.line}行目: '${call.callee}' の引数の数が正しくありません（期待:${def.arity}, 実際:${call.args.length}）`,
+      );
+    }
+    call.args.forEach((arg, i) => {
+      loadPartValueIntoA(arg, ctx, call.line);
+      e.STA_ZP(ARG_BASE + i);
+    });
+    e.JSR(def.label);
+  }
+
+  function genBehaviorCall(stmt: BehaviorCallStmt): void {
+    const inst = instanceInfo.get(stmt.instanceName);
+    if (!inst) {
+      throw new CodegenError(`${stmt.line}行目: 未知のインスタンス '${stmt.instanceName}' が参照されています`);
+    }
+    if (inst.partType !== stmt.partType) {
+      throw new CodegenError(
+        `${stmt.line}行目: インスタンス '${stmt.instanceName}' はパーツ種別 '${inst.partType}' であり、'${stmt.partType}' ではありません`,
+      );
+    }
+    const part = program.parts.find((p) => p.name === stmt.partType);
+    if (!part || !part.behaviors.some((b) => b.name === stmt.behaviorName)) {
+      throw new CodegenError(
+        `${stmt.line}行目: パーツ '${stmt.partType}' に振る舞い '${stmt.behaviorName}' が見つかりません`,
+      );
+    }
+    e.LDA_IMM(inst.index);
+    e.STA_ZP(ARG_BASE + 0);
+    e.JSR(behaviorLabel(stmt.partType, stmt.behaviorName));
+  }
+
+  function genPartIf(stmt: PartIfStmt, ctx: PartGenCtx): void {
+    const skipLabel = e.uniqueLabel("if_skip");
+    genPartCondSkip(stmt.test, ctx, skipLabel);
+    for (const s of stmt.consequent) genPartStmt(s, ctx);
+    if (stmt.alternate) {
+      const endLabel = e.uniqueLabel("if_end");
+      e.JMP(endLabel);
+      e.label(skipLabel);
+      for (const s of stmt.alternate) genPartStmt(s, ctx);
+      e.label(endLabel);
+    } else {
+      e.label(skipLabel);
+    }
+  }
+
+  function genPartStmt(stmt: PartStmt, ctx: PartGenCtx): void {
+    if (stmt.kind === "assign") genPartAssign(stmt, ctx);
+    else if (stmt.kind === "if") genPartIf(stmt, ctx);
+    else if (stmt.kind === "behaviorCall") genBehaviorCall(stmt);
+    else genPartCall(stmt.call, ctx);
+  }
+
+  const initFn = isV1 ? null : program.functions.find((f) => f.name === "init");
+  const updateFn = isV1 ? null : program.functions.find((f) => f.name === "update");
+  if (!isV1 && !initFn) throw new CodegenError("init() 関数が見つかりません（必須です）");
+  if (!isV1 && !updateFn) throw new CodegenError("update() 関数が見つかりません（必須です）");
 
   const e = new Emitter(0x8000);
 
@@ -238,6 +529,20 @@ export function generate(program: Program): Uint8Array {
   for (const g of program.globals) {
     e.LDA_IMM(g.init);
     e.STA_ZP(zp.get(g.name)!);
+  }
+
+  if (isV1) {
+    // v1: パーツ種別ごとのフィールド初期値を、配置された各インスタンス分だけRAMへ書き込む。
+    for (const part of program.parts) {
+      const count = Math.max(partInstanceCount.get(part.name) ?? 0, 1);
+      for (const field of part.fields) {
+        const base = partFieldAddr.get(`${part.name}.${field.name}`)!;
+        for (let i = 0; i < count; i++) {
+          e.LDA_IMM(field.init);
+          e.STA_ABS(base + i);
+        }
+      }
+    }
   }
 
   e.LDA_IMM(0b0000_1111); // $4015: Pulse1/Pulse2/Triangle/Noiseを有効化
@@ -484,13 +789,40 @@ export function generate(program: Program): Uint8Array {
   e.DB(...highBytes(trianglePeriods));
 
   // --- ユーザー関数 ---
-  e.label("init_user");
-  for (const s of initFn.body) genStmt(s);
-  e.RTS();
+  if (isV1) {
+    // パーツ種別ごとの振る舞いサブルーチンを1本ずつコンパイルする（再帰なしJSR/RTS、
+    // 「今どのインスタンスを処理中か」はARG_BASE+0経由でCUR_INSTANCEへ渡される規約）。
+    for (const part of program.parts) {
+      for (const behavior of part.behaviors) {
+        e.label(behaviorLabel(part.name, behavior.name));
+        e.LDA_ZP(ARG_BASE + 0);
+        e.STA_ZP(CUR_INSTANCE_ZP);
+        for (const s of behavior.body) genPartStmt(s, { selfPartType: part.name });
+        e.RTS();
+      }
+    }
 
-  e.label("update_user");
-  for (const s of updateFn.body) genStmt(s);
-  e.RTS();
+    const sceneInitFn = scene!.functions.find((f) => f.name === "init");
+    const sceneUpdateFn = scene!.functions.find((f) => f.name === "update");
+    if (!sceneInitFn) throw new CodegenError(`scene '${scene!.name}' に init() 関数が見つかりません（必須です）`);
+    if (!sceneUpdateFn) throw new CodegenError(`scene '${scene!.name}' に update() 関数が見つかりません（必須です）`);
+
+    e.label("init_user");
+    for (const s of sceneInitFn.body) genPartStmt(s, { selfPartType: null });
+    e.RTS();
+
+    e.label("update_user");
+    for (const s of sceneUpdateFn.body) genPartStmt(s, { selfPartType: null });
+    e.RTS();
+  } else {
+    e.label("init_user");
+    for (const s of initFn!.body) genStmt(s);
+    e.RTS();
+
+    e.label("update_user");
+    for (const s of updateFn!.body) genStmt(s);
+    e.RTS();
+  }
 
   const { bytes, labels } = e.assemble();
   if (bytes.length > 0x3ffa) {
