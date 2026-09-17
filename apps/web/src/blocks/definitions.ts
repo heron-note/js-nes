@@ -14,6 +14,8 @@ const COLOR_CONTROL = 260;
 const COLOR_CONDITION = 20;
 const COLOR_CALLS = 160;
 const COLOR_VALUES = 0;
+const COLOR_PARTS = 290;
+const COLOR_SCENES = 130;
 
 const BTN_OPTIONS: [string, string][] = [
   ["右 (right)", "right"],
@@ -251,6 +253,226 @@ export function defineFamiJsBlocks(): void {
         this.setOutput(true, null);
         this.setColour(COLOR_VALUES);
         this.setTooltip("変数の値を参照する");
+      },
+    },
+
+    // --- DSL v1（シーン/パーツ構成モデル）専用のブロック ---
+    // docs/03_DSL_SPEC.md のv0構文と同じく、part/scene構文をそのままブロック化したもの。
+    // 既存のv0ブロック（fjs_if/fjs_compare/fjs_btn/fjs_call_*等）はここでも無改造のまま再利用する。
+
+    fjs_part_decl: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput().appendField("🧩 パーツ (part)").appendField(new Blockly.FieldTextInput("Ball"), "NAME");
+        this.appendStatementInput("BODY");
+        this.setColour(COLOR_PARTS);
+        this.setTooltip("part Name { ... } に対応。fieldとbehaviorをこの中に並べる");
+      },
+    },
+
+    fjs_field_decl: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("フィールド (field)")
+          .appendField(new Blockly.FieldTextInput("x"), "NAME")
+          .appendField("の初期値 =")
+          .appendField(new Blockly.FieldNumber(0, 0, 255, 1), "VALUE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_PARTS);
+        this.setTooltip("field x = 値; パーツのインスタンスごとの状態を宣言する");
+      },
+    },
+
+    fjs_behavior_decl: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput().appendField("▶ 振る舞い (behavior)").appendField(new Blockly.FieldTextInput("move"), "NAME");
+        this.appendStatementInput("DO");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_PARTS);
+        this.setTooltip("behavior name(self) { ... } に対応。このパーツの1インスタンス分の振る舞いを書く");
+      },
+    },
+
+    fjs_self_field_get: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput().appendField("self.").appendField(new Blockly.FieldTextInput("x"), "FIELD");
+        this.setOutput(true, null);
+        this.setColour(COLOR_PARTS);
+        this.setTooltip("self.field（このインスタンス自身のフィールドを参照する）。behavior内でのみ使用可");
+      },
+    },
+
+    fjs_self_field_set: {
+      init(this: Blockly.Block) {
+        this.appendValueInput("VALUE").appendField("self.").appendField(new Blockly.FieldTextInput("x"), "FIELD").appendField("＝");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_PARTS);
+        this.setTooltip("self.field = 値; behavior内でのみ使用可");
+      },
+    },
+
+    fjs_self_field_add: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("self.")
+          .appendField(new Blockly.FieldTextInput("x"), "FIELD")
+          .appendField("を")
+          .appendField(new Blockly.FieldNumber(1, 1, 255, 1), "NUM")
+          .appendField("増やす (+=)");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_PARTS);
+        this.setTooltip("self.field += 数値; behavior内でのみ使用可");
+      },
+    },
+
+    fjs_self_field_sub: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("self.")
+          .appendField(new Blockly.FieldTextInput("x"), "FIELD")
+          .appendField("を")
+          .appendField(new Blockly.FieldNumber(1, 1, 255, 1), "NUM")
+          .appendField("減らす (-=)");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_PARTS);
+        this.setTooltip("self.field -= 数値; behavior内でのみ使用可");
+      },
+    },
+
+    fjs_scene_decl: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput().appendField("🎬 シーン (scene)").appendField(new Blockly.FieldTextInput("Main"), "NAME");
+        this.appendStatementInput("BODY");
+        this.setColour(COLOR_SCENES);
+        this.setTooltip("scene Name { ... } に対応。instance宣言と、このシーン専用のinit/updateを並べる");
+      },
+    },
+
+    fjs_instance_decl: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("配置 (instance)")
+          .appendField(new Blockly.FieldTextInput("ball"), "NAME")
+          .appendField(": パーツ種別")
+          .appendField(new Blockly.FieldTextInput("Ball"), "PARTTYPE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_SCENES);
+        this.setTooltip("instance ball: Ball; このシーンにパーツのインスタンスを配置する");
+      },
+    },
+
+    fjs_scene_event_init: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput().appendField("🚩 シーン開始時 (init)");
+        this.appendStatementInput("DO");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_SCENES);
+        this.setTooltip("scene内のfunction init() { ... }。sceneのBODYの中に置く");
+      },
+    },
+
+    fjs_scene_event_update: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput().appendField("🔁 シーン毎フレーム (update)");
+        this.appendStatementInput("DO");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_SCENES);
+        this.setTooltip("scene内のfunction update() { ... }。sceneのBODYの中に置く");
+      },
+    },
+
+    fjs_instance_field_get: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField(new Blockly.FieldTextInput("ball"), "INSTANCE")
+          .appendField(".")
+          .appendField(new Blockly.FieldTextInput("x"), "FIELD");
+        this.setOutput(true, null);
+        this.setColour(COLOR_SCENES);
+        this.setTooltip("instanceName.field（他パーツのインスタンスのフィールドを参照する）。scene内でのみ使用可");
+      },
+    },
+
+    fjs_instance_field_set: {
+      init(this: Blockly.Block) {
+        this.appendValueInput("VALUE")
+          .appendField(new Blockly.FieldTextInput("ball"), "INSTANCE")
+          .appendField(".")
+          .appendField(new Blockly.FieldTextInput("x"), "FIELD")
+          .appendField("＝");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_SCENES);
+        this.setTooltip("instanceName.field = 値; scene内でのみ使用可");
+      },
+    },
+
+    fjs_instance_field_add: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField(new Blockly.FieldTextInput("ball"), "INSTANCE")
+          .appendField(".")
+          .appendField(new Blockly.FieldTextInput("x"), "FIELD")
+          .appendField("を")
+          .appendField(new Blockly.FieldNumber(1, 1, 255, 1), "NUM")
+          .appendField("増やす (+=)");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_SCENES);
+        this.setTooltip("instanceName.field += 数値; scene内でのみ使用可");
+      },
+    },
+
+    fjs_instance_field_sub: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField(new Blockly.FieldTextInput("ball"), "INSTANCE")
+          .appendField(".")
+          .appendField(new Blockly.FieldTextInput("x"), "FIELD")
+          .appendField("を")
+          .appendField(new Blockly.FieldNumber(1, 1, 255, 1), "NUM")
+          .appendField("減らす (-=)");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_SCENES);
+        this.setTooltip("instanceName.field -= 数値; scene内でのみ使用可");
+      },
+    },
+
+    fjs_call_behavior: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("実行:")
+          .appendField(new Blockly.FieldTextInput("Ball"), "PARTTYPE")
+          .appendField(".")
+          .appendField(new Blockly.FieldTextInput("move"), "BEHAVIOR")
+          .appendField("(")
+          .appendField(new Blockly.FieldTextInput("ball"), "INSTANCE")
+          .appendField(")");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_SCENES);
+        this.setTooltip("PartType.behaviorName(instanceName); 指定したインスタンスの振る舞いを実行する。scene内でのみ使用可");
+      },
+    },
+
+    fjs_compare_expr: {
+      init(this: Blockly.Block) {
+        this.appendValueInput("LEFT").appendField("比較:");
+        this.appendValueInput("RIGHT").appendField(new Blockly.FieldDropdown(COMPARE_OPTIONS), "OP");
+        this.setInputsInline(true);
+        this.setOutput(true, null);
+        this.setColour(COLOR_CONDITION);
+        this.setTooltip(
+          "値 op 値 の比較条件（fjs_compareと違い両辺とも値ブロックを差し込める。self.field/instanceName.fieldにも使える）",
+        );
       },
     },
   });

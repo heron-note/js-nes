@@ -142,13 +142,135 @@ forBlock["fjs_variable_get"] = (block): [string, number] => {
   return [name, ORDER_ATOMIC];
 };
 
-/** ワークスペース全体からDSLソーステキストを生成する。 */
-export function generateSource(workspace: Blockly.Workspace): string {
-  const globalBlocks = workspace.getBlocksByType("fjs_let", false);
-  const globalsCode = globalBlocks
+// --- DSL v1（シーン/パーツ構成モデル）専用のジェネレータ ---
+
+forBlock["fjs_part_decl"] = (block) => {
+  const name = block.getFieldValue("NAME") as string;
+  const body = famijsGenerator.statementToCode(block, "BODY");
+  return `part ${name} {\n${body}}\n\n`;
+};
+
+forBlock["fjs_field_decl"] = (block) => {
+  const name = block.getFieldValue("NAME") as string;
+  const value = block.getFieldValue("VALUE") as number;
+  return `field ${name} = ${value};\n`;
+};
+
+forBlock["fjs_behavior_decl"] = (block) => {
+  const name = block.getFieldValue("NAME") as string;
+  const body = famijsGenerator.statementToCode(block, "DO");
+  return `behavior ${name}(self) {\n${body}}\n`;
+};
+
+forBlock["fjs_self_field_get"] = (block): [string, number] => {
+  const field = block.getFieldValue("FIELD") as string;
+  return [`self.${field}`, ORDER_ATOMIC];
+};
+
+forBlock["fjs_self_field_set"] = (block) => {
+  const field = block.getFieldValue("FIELD") as string;
+  const value = valueOf(block, "VALUE", "0");
+  return `self.${field} = ${value};\n`;
+};
+
+forBlock["fjs_self_field_add"] = (block) => {
+  const field = block.getFieldValue("FIELD") as string;
+  const num = block.getFieldValue("NUM") as number;
+  return `self.${field} += ${num};\n`;
+};
+
+forBlock["fjs_self_field_sub"] = (block) => {
+  const field = block.getFieldValue("FIELD") as string;
+  const num = block.getFieldValue("NUM") as number;
+  return `self.${field} -= ${num};\n`;
+};
+
+forBlock["fjs_scene_decl"] = (block) => {
+  const name = block.getFieldValue("NAME") as string;
+  const body = famijsGenerator.statementToCode(block, "BODY");
+  return `scene ${name} {\n${body}}\n\n`;
+};
+
+forBlock["fjs_instance_decl"] = (block) => {
+  const name = block.getFieldValue("NAME") as string;
+  const partType = block.getFieldValue("PARTTYPE") as string;
+  return `instance ${name}: ${partType};\n`;
+};
+
+forBlock["fjs_scene_event_init"] = (block) => {
+  const body = famijsGenerator.statementToCode(block, "DO");
+  return `function init() {\n${body}}\n\n`;
+};
+
+forBlock["fjs_scene_event_update"] = (block) => {
+  const body = famijsGenerator.statementToCode(block, "DO");
+  return `function update() {\n${body}}\n\n`;
+};
+
+forBlock["fjs_instance_field_get"] = (block): [string, number] => {
+  const instance = block.getFieldValue("INSTANCE") as string;
+  const field = block.getFieldValue("FIELD") as string;
+  return [`${instance}.${field}`, ORDER_ATOMIC];
+};
+
+forBlock["fjs_instance_field_set"] = (block) => {
+  const instance = block.getFieldValue("INSTANCE") as string;
+  const field = block.getFieldValue("FIELD") as string;
+  const value = valueOf(block, "VALUE", "0");
+  return `${instance}.${field} = ${value};\n`;
+};
+
+forBlock["fjs_instance_field_add"] = (block) => {
+  const instance = block.getFieldValue("INSTANCE") as string;
+  const field = block.getFieldValue("FIELD") as string;
+  const num = block.getFieldValue("NUM") as number;
+  return `${instance}.${field} += ${num};\n`;
+};
+
+forBlock["fjs_instance_field_sub"] = (block) => {
+  const instance = block.getFieldValue("INSTANCE") as string;
+  const field = block.getFieldValue("FIELD") as string;
+  const num = block.getFieldValue("NUM") as number;
+  return `${instance}.${field} -= ${num};\n`;
+};
+
+forBlock["fjs_call_behavior"] = (block) => {
+  const partType = block.getFieldValue("PARTTYPE") as string;
+  const behavior = block.getFieldValue("BEHAVIOR") as string;
+  const instance = block.getFieldValue("INSTANCE") as string;
+  return `${partType}.${behavior}(${instance});\n`;
+};
+
+forBlock["fjs_compare_expr"] = (block): [string, number] => {
+  const left = valueOf(block, "LEFT", "0");
+  const op = block.getFieldValue("OP") as string;
+  const right = valueOf(block, "RIGHT", "0");
+  return [`${left} ${op} ${right}`, ORDER_ATOMIC];
+};
+
+function blocksToCode(blocks: Blockly.Block[]): string {
+  return blocks
     .map((b) => famijsGenerator.blockToCode(b, true))
     .map((c) => (Array.isArray(c) ? c[0] : c))
     .join("");
+}
+
+/** ワークスペース全体からDSLソーステキストを生成する。 */
+export function generateSource(workspace: Blockly.Workspace): string {
+  const globalBlocks = workspace.getBlocksByType("fjs_let", false);
+  const globalsCode = blocksToCode(globalBlocks);
+
+  // part/sceneブロックが1つでもあれば、v1(シーン/パーツ構成モデル)のソースとして
+  // 組み立てる。この場合、v0のトップレベルfunction init/updateは(codegen.tsの制約どおり)
+  // 使用できないため、fjs_event_init/fjs_event_updateは無視する
+  // （scene内では専用のfjs_scene_event_init/fjs_scene_event_updateを使う）。
+  const partBlocks = workspace.getBlocksByType("fjs_part_decl", false);
+  const sceneBlocks = workspace.getBlocksByType("fjs_scene_decl", false);
+  if (partBlocks.length > 0 || sceneBlocks.length > 0) {
+    const partsCode = blocksToCode(partBlocks);
+    const scenesCode = blocksToCode(sceneBlocks);
+    return `${globalsCode}\n${partsCode}${scenesCode}`;
+  }
 
   const initBlocks = workspace.getBlocksByType("fjs_event_init", false);
   const updateBlocks = workspace.getBlocksByType("fjs_event_update", false);
