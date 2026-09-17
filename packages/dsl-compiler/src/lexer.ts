@@ -14,6 +14,7 @@ export type TokenType =
   | ";"
   | ","
   | "."
+  | ":"
   | "=="
   | "!="
   | "<="
@@ -34,7 +35,7 @@ export interface Token {
 }
 
 const TWO_CHAR_OPS = new Set(["==", "!=", "<=", ">=", "+=", "-="]);
-const ONE_CHAR_OPS = "{}();,.=<>+-";
+const ONE_CHAR_OPS = "{}();,.:=<>+-";
 
 function isDigit(c: string): boolean {
   return c >= "0" && c <= "9";
