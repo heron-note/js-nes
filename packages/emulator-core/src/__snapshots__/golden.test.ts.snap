@@ -1,0 +1,50 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`golden regression fixture（Mapper 0・スクロール未使用の既存コンテンツ用） > APUレジスタ書き込みから導出されるチャンネルスナップショットが変わらない 1`] = `
+[
+  {
+    "duty": 2,
+    "enabled": true,
+    "frequencyHz": 435.25607976653697,
+    "volume": 15,
+  },
+  {
+    "duty": 0,
+    "enabled": false,
+    "frequencyHz": 0,
+    "volume": 0,
+  },
+  {
+    "duty": 0,
+    "enabled": true,
+    "frequencyHz": 217.62803988326849,
+    "volume": 15,
+  },
+  {
+    "duty": 0,
+    "enabled": true,
+    "frequencyHz": 18643.46875,
+    "volume": 15,
+  },
+]
+`;
+
+exports[`golden regression fixture（Mapper 0・スクロール未使用の既存コンテンツ用） > 背景+スプライト合成フレームバッファのハッシュが変わらない 1`] = `
+{
+  "hash": 1842915781,
+  "samplePixels": [
+    [
+      83,
+      174,
+      255,
+      255,
+    ],
+    [
+      13,
+      87,
+      255,
+      255,
+    ],
+  ],
+}
+`;

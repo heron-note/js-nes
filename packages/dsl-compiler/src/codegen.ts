@@ -1,0 +1,512 @@
+import { Emitter } from "./emitter.js";
+import type { ArgExpr, AssignStmt, CallExpr, Cond, CompareOp, IfStmt, Program, Stmt, ValueExpr } from "./ast.js";
+import { buildPulsePeriodTable, buildTrianglePeriodTable, highBytes, lowBytes } from "./notes.js";
+
+/**
+ * ゼロページレイアウト（docs/03_DSL_SPEC.md 準拠）:
+ *   $00       btnState1（1コンの押下状態キャッシュ。NMIハンドラが毎フレーム更新）
+ *   $01       btnState1Prev（直前フレームの押下状態。_just_pressed のエッジ検出用）
+ *   $02-$06   ビルトイン関数呼び出し用の引数スクラッチ（最大5引数まで）
+ *   $07-$0A   サウンドチャンネル(Pulse1/Pulse2/Triangle/Noise)ごとの残り発音フレーム数
+ *   $0B-      ユーザーのグローバル変数（宣言順）
+ */
+const BTN_STATE_ZP = 0x00;
+const BTN_STATE_PREV_ZP = 0x01;
+const ARG_BASE = 0x02;
+const SOUND_DUR_BASE = 0x07;
+const USER_VARS_START = 0x0b;
+
+const JUST_PRESSED_SUFFIX = "_just_pressed";
+
+/**
+ * $4016 の8回シリアル読み出し順（A,B,Select,Start,Up,Down,Left,Right）を
+ * ROL方式でキャッシュバイトに詰めた結果のビット割り当て。
+ * （read_controller1 ランタイムルーチンの実装と対になっている）
+ */
+const BTN_BIT_MASK: Record<string, number> = {
+  right: 0x01,
+  left: 0x02,
+  down: 0x04,
+  up: 0x08,
+  start: 0x10,
+  select: 0x20,
+  b: 0x40,
+  a: 0x80,
+};
+
+interface BuiltinDef {
+  label: string;
+  arity: number;
+}
+
+const BUILTINS: Record<string, BuiltinDef> = {
+  setPalette: { label: "set_palette", arity: 5 },
+  setSpritePalette: { label: "set_sprite_palette", arity: 5 },
+  drawSprite: { label: "draw_sprite", arity: 5 },
+  playTone: { label: "play_tone", arity: 3 },
+};
+
+export class CodegenError extends Error {}
+
+export function generate(program: Program): Uint8Array {
+  const zp = new Map<string, number>();
+  let nextAddr = USER_VARS_START;
+  for (const g of program.globals) {
+    if (zp.has(g.name)) {
+      throw new CodegenError(`${g.line}行目: 変数 '${g.name}' が重複して宣言されています`);
+    }
+    if (nextAddr > 0xff) {
+      throw new CodegenError(
+        `${g.line}行目: ゼロページ（256バイト）がパンクしました！ 変数の数を減らしてください`,
+      );
+    }
+    zp.set(g.name, nextAddr);
+    nextAddr++;
+  }
+
+  const initFn = program.functions.find((f) => f.name === "init");
+  const updateFn = program.functions.find((f) => f.name === "update");
+  if (!initFn) throw new CodegenError("init() 関数が見つかりません（必須です）");
+  if (!updateFn) throw new CodegenError("update() 関数が見つかりません（必須です）");
+
+  const e = new Emitter(0x8000);
+
+  function resolveVar(name: string, line: number): number {
+    const addr = zp.get(name);
+    if (addr === undefined) {
+      throw new CodegenError(`${line}行目: 未宣言の変数 '${name}' が使用されています`);
+    }
+    return addr;
+  }
+
+  function loadValueIntoA(v: ValueExpr, line: number): void {
+    if (v.kind === "num") e.LDA_IMM(v.value);
+    else e.LDA_ZP(resolveVar(v.name, line));
+  }
+
+  function genCall(call: CallExpr): void {
+    const def = BUILTINS[call.callee];
+    if (!def) {
+      throw new CodegenError(`${call.line}行目: 未知の関数 '${call.callee}' が呼び出されています`);
+    }
+    if (call.args.length !== def.arity) {
+      throw new CodegenError(
+        `${call.line}行目: '${call.callee}' の引数の数が正しくありません（期待:${def.arity}, 実際:${call.args.length}）`,
+      );
+    }
+    call.args.forEach((arg: ArgExpr, i: number) => {
+      loadValueIntoA(arg, call.line);
+      e.STA_ZP(ARG_BASE + i);
+    });
+    e.JSR(def.label);
+  }
+
+  function genCompareSkip(op: CompareOp, skipLabel: string): void {
+    switch (op) {
+      case "==":
+        e.BNE(skipLabel);
+        return;
+      case "!=":
+        e.BEQ(skipLabel);
+        return;
+      case "<":
+        e.BCS(skipLabel);
+        return;
+      case ">=":
+        e.BCC(skipLabel);
+        return;
+      case ">":
+        e.BCC(skipLabel);
+        e.BEQ(skipLabel);
+        return;
+      case "<=": {
+        const okLabel = e.uniqueLabel("le_ok");
+        e.BCC(okLabel);
+        e.BEQ(okLabel);
+        e.JMP(skipLabel);
+        e.label(okLabel);
+        return;
+      }
+    }
+  }
+
+  function genCondSkip(cond: Cond, skipLabel: string): void {
+    if (cond.kind === "truthy") {
+      if (cond.expr.kind === "member") {
+        if (cond.expr.object !== "btn") {
+          throw new CodegenError(`未対応のオブジェクト '${cond.expr.object}' が参照されています（'btn'のみ対応）`);
+        }
+        const isJustPressed = cond.expr.property.endsWith(JUST_PRESSED_SUFFIX);
+        const buttonName = isJustPressed
+          ? cond.expr.property.slice(0, -JUST_PRESSED_SUFFIX.length)
+          : cond.expr.property;
+        const mask = BTN_BIT_MASK[buttonName];
+        if (mask === undefined) {
+          throw new CodegenError(`未知のボタン 'btn.${cond.expr.property}' が参照されています`);
+        }
+        if (isJustPressed) {
+          // 「現在押されている」かつ「直前フレームでは押されていなかった」ビットのみ抽出する
+          e.LDA_ZP(BTN_STATE_ZP);
+          e.EOR_ZP(BTN_STATE_PREV_ZP);
+          e.AND_ZP(BTN_STATE_ZP);
+        } else {
+          e.LDA_ZP(BTN_STATE_ZP);
+        }
+        e.AND_IMM(mask);
+        e.BEQ(skipLabel);
+      } else {
+        e.LDA_ZP(resolveVar(cond.expr.name, 0));
+        e.BEQ(skipLabel);
+      }
+      return;
+    }
+
+    e.LDA_ZP(resolveVar(cond.left.name, 0));
+    if (cond.right.kind === "num") e.CMP_IMM(cond.right.value);
+    else e.CMP_ZP(resolveVar(cond.right.name, 0));
+    genCompareSkip(cond.op, skipLabel);
+  }
+
+  function genAssign(stmt: AssignStmt): void {
+    const addr = resolveVar(stmt.name, stmt.line);
+    if (stmt.op === "=") {
+      loadValueIntoA(stmt.value, stmt.line);
+      e.STA_ZP(addr);
+      return;
+    }
+    if (stmt.value.kind !== "num") {
+      throw new CodegenError(`${stmt.line}行目: '+=' / '-=' の右辺は数値リテラルのみ対応しています（v0の制約）`);
+    }
+    if (stmt.op === "+=") {
+      if (stmt.value.value === 1) {
+        e.INC_ZP(addr);
+      } else {
+        e.LDA_ZP(addr);
+        e.CLC();
+        e.ADC_IMM(stmt.value.value);
+        e.STA_ZP(addr);
+      }
+    } else {
+      if (stmt.value.value === 1) {
+        e.DEC_ZP(addr);
+      } else {
+        e.LDA_ZP(addr);
+        e.SEC();
+        e.SBC_IMM(stmt.value.value);
+        e.STA_ZP(addr);
+      }
+    }
+  }
+
+  function genIf(stmt: IfStmt): void {
+    const skipLabel = e.uniqueLabel("if_skip");
+    genCondSkip(stmt.test, skipLabel);
+    for (const s of stmt.consequent) genStmt(s);
+    if (stmt.alternate) {
+      const endLabel = e.uniqueLabel("if_end");
+      e.JMP(endLabel);
+      e.label(skipLabel);
+      for (const s of stmt.alternate) genStmt(s);
+      e.label(endLabel);
+    } else {
+      e.label(skipLabel);
+    }
+  }
+
+  function genStmt(stmt: Stmt): void {
+    if (stmt.kind === "assign") genAssign(stmt);
+    else if (stmt.kind === "if") genIf(stmt);
+    else genCall(stmt.call);
+  }
+
+  // --- reset ルーチン ---
+  e.label("reset");
+  e.SEI();
+  e.CLD();
+  e.LDX_IMM(0xff);
+  e.TXS();
+  e.LDA_IMM(0x00);
+  e.STA_ABS(0x2000);
+  e.STA_ABS(0x2001);
+  e.label("vblankwait1");
+  e.BIT_ABS(0x2002);
+  e.BPL("vblankwait1");
+  e.label("vblankwait2");
+  e.BIT_ABS(0x2002);
+  e.BPL("vblankwait2");
+
+  for (const g of program.globals) {
+    e.LDA_IMM(g.init);
+    e.STA_ZP(zp.get(g.name)!);
+  }
+
+  e.LDA_IMM(0b0000_1111); // $4015: Pulse1/Pulse2/Triangle/Noiseを有効化
+  e.STA_ABS(0x4015);
+
+  // OAMシャドウ($0200-$02FF)を$FFで埋めておく。drawSprite()で使わなかったスプライト
+  // （Y座標が0のまま）は画面上端に表示されてしまうため、Y=$FF（画面外）にして
+  // 明示的にdrawSprite()されるまで非表示にする。
+  e.LDA_IMM(0xff);
+  e.LDX_IMM(0x00);
+  e.label("clear_oam_loop");
+  e.DEX();
+  e.STA_ABS_X(0x0200);
+  e.BNE("clear_oam_loop");
+
+  e.JSR("init_user");
+  e.LDA_IMM(0b1000_0000); // PPUCTRL: NMI有効
+  e.STA_ABS(0x2000);
+  // PPUMASK: スプライトのみ描画有効。v0のDSL/ブロックエディタには背景ネームテーブルを
+  // 編集する手段がなく、ネームテーブルはリセット時に全バイト0（＝タイル0）で初期化される。
+  // 背景描画を有効にすると、ユーザーがどのタイル番号に絵を描いても（ドット絵エディタは
+  // タイル0を初期選択状態にする）その絵が画面全体に敷き詰められて表示されてしまうため、
+  // 背景を編集できるようになるまでは背景描画自体を無効にしておく。
+  e.LDA_IMM(0b0001_0000);
+  e.STA_ABS(0x2001);
+  e.label("forever");
+  e.JMP("forever");
+
+  // --- NMIハンドラ ---
+  // メインループは何もしないだけなので、A/X/Yレジスタの退避は不要（割り込み元が状態を参照しないため）。
+  e.label("nmi_handler");
+  e.LDA_ZP(BTN_STATE_ZP);
+  e.STA_ZP(BTN_STATE_PREV_ZP); // _just_pressed判定用に、上書きされる前の状態を退避
+  e.JSR("read_controller1");
+  e.JSR("sound_tick");
+  e.JSR("update_user");
+  e.LDA_IMM(0x02); // OAMシャドウ($0200-$02FF)のページ番号
+  e.STA_ABS(0x4014); // OAM DMA発火（drawSpriteの結果をPPU側OAMへ反映）
+  e.RTI();
+
+  // --- ランタイム: 標準コントローラ読み取り ---
+  e.label("read_controller1");
+  e.LDA_IMM(0x01);
+  e.STA_ABS(0x4016);
+  e.LDA_IMM(0x00);
+  e.STA_ABS(0x4016);
+  e.LDX_IMM(0x08);
+  e.label("read_controller1_loop");
+  e.LDA_ABS(0x4016);
+  e.LSR_ACC();
+  e.ROL_ZP(BTN_STATE_ZP);
+  e.DEX();
+  e.BNE("read_controller1_loop");
+  e.RTS();
+
+  // --- ランタイム: drawSprite(id, x, y, tile, palette) ---
+  // OAMシャドウ($0200-$02FF)へ書き込み、NMIハンドラ末尾のOAM DMA($4014)でPPU側OAMへ反映される。
+  // 画面上へのスプライト描画（PPU側のOAM読み出し・合成）自体はM4で対応する。
+  // palette（0-3）は属性バイトのbit0-1にそのまま入り、setSpritePalette()で設定した
+  // 4つのスプライトパレットのどれを使うかを実機同様スプライトごとに選べる。
+  e.label("draw_sprite");
+  e.LDA_ZP(ARG_BASE + 0); // id
+  e.ASL_ACC();
+  e.ASL_ACC(); // id * 4
+  e.TAX();
+  e.LDA_ZP(ARG_BASE + 2); // y
+  e.STA_ABS_X(0x0200);
+  e.LDA_ZP(ARG_BASE + 3); // tile
+  e.STA_ABS_X(0x0201);
+  e.LDA_ZP(ARG_BASE + 4); // palette(0-3)
+  e.AND_IMM(0x03);
+  e.STA_ABS_X(0x0202);
+  e.LDA_ZP(ARG_BASE + 1); // x
+  e.STA_ABS_X(0x0203);
+  e.RTS();
+
+  // --- ランタイム: setPalette(slot, c0, c1, c2, c3) ---
+  // slotは実機の制約どおり0-3の4パレットのみ（AND #$03でマスクし、範囲外指定が
+  // スプライトパレット領域$3F10以降を巻き込んで壊すことのないようにする）。
+  e.label("set_palette");
+  e.LDA_IMM(0x3f);
+  e.STA_ABS(0x2006);
+  e.LDA_ZP(ARG_BASE + 0); // slot
+  e.AND_IMM(0x03);
+  e.ASL_ACC();
+  e.ASL_ACC(); // slot * 4
+  e.STA_ABS(0x2006);
+  e.LDA_ZP(ARG_BASE + 1);
+  e.STA_ABS(0x2007);
+  e.LDA_ZP(ARG_BASE + 2);
+  e.STA_ABS(0x2007);
+  e.LDA_ZP(ARG_BASE + 3);
+  e.STA_ABS(0x2007);
+  e.LDA_ZP(ARG_BASE + 4);
+  e.STA_ABS(0x2007);
+  e.RTS();
+
+  // --- ランタイム: setSpritePalette(slot, c0, c1, c2, c3) ---
+  // スプライト用パレットは $3F10 起点（背景パレットの $3F00 起点に +$10 したアドレス）。
+  // slotは実機の制約どおり0-3の4パレットのみ（AND #$03でマスクし、範囲外指定が
+  // パレットRAMの32バイトを巻いて背景パレット領域を壊すことのないようにする）。
+  e.label("set_sprite_palette");
+  e.LDA_IMM(0x3f);
+  e.STA_ABS(0x2006);
+  e.LDA_ZP(ARG_BASE + 0); // slot
+  e.AND_IMM(0x03);
+  e.ASL_ACC();
+  e.ASL_ACC(); // slot * 4
+  e.CLC();
+  e.ADC_IMM(0x10);
+  e.STA_ABS(0x2006);
+  e.LDA_ZP(ARG_BASE + 1);
+  e.STA_ABS(0x2007);
+  e.LDA_ZP(ARG_BASE + 2);
+  e.STA_ABS(0x2007);
+  e.LDA_ZP(ARG_BASE + 3);
+  e.STA_ABS(0x2007);
+  e.LDA_ZP(ARG_BASE + 4);
+  e.STA_ABS(0x2007);
+  e.RTS();
+
+  // --- ランタイム: サウンド発音時間の管理（毎NMIで1回呼ばれる） ---
+  // playTone()はハードウェアのレングスカウンタを使わず（halt/loopビットで自動減衰を無効化した上で）、
+  // ここでソフトウェア的にフレーム数をカウントダウンし、0になったチャンネルを無音化する。
+  const DUR0 = SOUND_DUR_BASE + 0; // Pulse1
+  const DUR1 = SOUND_DUR_BASE + 1; // Pulse2
+  const DUR2 = SOUND_DUR_BASE + 2; // Triangle
+  const DUR3 = SOUND_DUR_BASE + 3; // Noise
+
+  e.label("sound_tick");
+
+  e.LDA_ZP(DUR0);
+  e.BEQ("sound_tick_ch0_done");
+  e.DEC_ZP(DUR0);
+  e.BNE("sound_tick_ch0_done");
+  e.LDA_IMM(0b0011_0000); // halt=1, constant volume=1, volume=0
+  e.STA_ABS(0x4000);
+  e.label("sound_tick_ch0_done");
+
+  e.LDA_ZP(DUR1);
+  e.BEQ("sound_tick_ch1_done");
+  e.DEC_ZP(DUR1);
+  e.BNE("sound_tick_ch1_done");
+  e.LDA_IMM(0b0011_0000);
+  e.STA_ABS(0x4004);
+  e.label("sound_tick_ch1_done");
+
+  e.LDA_ZP(DUR2);
+  e.BEQ("sound_tick_ch2_done");
+  e.DEC_ZP(DUR2);
+  e.BNE("sound_tick_ch2_done");
+  e.LDA_IMM(0b1000_0000); // halt=1, linear counter reload=0（実質無音化）
+  e.STA_ABS(0x4008);
+  e.label("sound_tick_ch2_done");
+
+  e.LDA_ZP(DUR3);
+  e.BEQ("sound_tick_ch3_done");
+  e.DEC_ZP(DUR3);
+  e.BNE("sound_tick_ch3_done");
+  e.LDA_IMM(0b0011_0000);
+  e.STA_ABS(0x400c);
+  e.label("sound_tick_ch3_done");
+
+  e.RTS();
+
+  // --- ランタイム: playTone(channel, noteIndex, duration) ---
+  // channel: 0=Pulse1, 1=Pulse2, 2=Triangle, 3=Noise
+  // noteIndex: 0-35（Pulse/Triangleは音階テーブル参照）、Noiseのみ0-15の実機ノイズ周期インデックス直指定
+  // duration: 発音を継続するフレーム数（約1/60秒単位）。0を指定するとその場で無音化される。
+  e.label("play_tone");
+  e.LDA_ZP(ARG_BASE + 0);
+  e.CMP_IMM(0);
+  e.BEQ("play_tone_ch0");
+  e.CMP_IMM(1);
+  e.BEQ("play_tone_ch1");
+  e.CMP_IMM(2);
+  e.BEQ("play_tone_ch2");
+  e.JMP("play_tone_ch3");
+
+  e.label("play_tone_ch0");
+  e.LDA_IMM(0b1011_1111); // duty=10(50%), halt=1, constant volume=1, volume=15
+  e.STA_ABS(0x4000);
+  e.LDA_ZP(ARG_BASE + 1); // noteIndex(0-35)がそのままテーブルのオフセット
+  e.TAX();
+  e.LDA_ABS_X_LABEL("pulse_period_lo");
+  e.STA_ABS(0x4002);
+  e.LDA_ABS_X_LABEL("pulse_period_hi");
+  e.STA_ABS(0x4003);
+  e.LDA_ZP(ARG_BASE + 2);
+  e.STA_ZP(DUR0);
+  e.RTS();
+
+  e.label("play_tone_ch1");
+  e.LDA_IMM(0b1011_1111);
+  e.STA_ABS(0x4004);
+  e.LDA_ZP(ARG_BASE + 1);
+  e.TAX();
+  e.LDA_ABS_X_LABEL("pulse_period_lo");
+  e.STA_ABS(0x4006);
+  e.LDA_ABS_X_LABEL("pulse_period_hi");
+  e.STA_ABS(0x4007);
+  e.LDA_ZP(ARG_BASE + 2);
+  e.STA_ZP(DUR1);
+  e.RTS();
+
+  e.label("play_tone_ch2");
+  e.LDA_IMM(0b1111_1111); // halt=1, linear counter reload=127(最大, 常時再生)
+  e.STA_ABS(0x4008);
+  e.LDA_ZP(ARG_BASE + 1);
+  e.TAX();
+  e.LDA_ABS_X_LABEL("tri_period_lo");
+  e.STA_ABS(0x400a);
+  e.LDA_ABS_X_LABEL("tri_period_hi");
+  e.STA_ABS(0x400b);
+  e.LDA_ZP(ARG_BASE + 2);
+  e.STA_ZP(DUR2);
+  e.RTS();
+
+  e.label("play_tone_ch3");
+  e.LDA_IMM(0b0011_1111); // halt=1, constant volume=1, volume=15
+  e.STA_ABS(0x400c);
+  e.LDA_ZP(ARG_BASE + 1); // noteIndexをそのままノイズ周期インデックス(0-15)として使用
+  e.AND_IMM(0x0f);
+  e.STA_ABS(0x400e);
+  // $400Fへの書き込みは、ノイズ自体のパラメータとしては意味を持たないが、実機は
+  // この書き込みでレングスカウンタをロードする（$4003/$4007/$400B等と共通の仕様）。
+  // これを書かないとレングスカウンタが0のままチャンネルが無音扱いになってしまうため、
+  // duration管理はhaltビットでソフトウェア(sound_tick)側に委ねつつも、この一撃は必要。
+  e.STA_ABS(0x400f);
+  e.LDA_ZP(ARG_BASE + 2);
+  e.STA_ZP(DUR3);
+  e.RTS();
+
+  // --- データ: 音階→APU周期テーブル（コンパイル時に生成、docs/03_DSL_SPEC.md参照） ---
+  const pulsePeriods = buildPulsePeriodTable();
+  const trianglePeriods = buildTrianglePeriodTable();
+  e.label("pulse_period_lo");
+  e.DB(...lowBytes(pulsePeriods));
+  e.label("pulse_period_hi");
+  e.DB(...highBytes(pulsePeriods));
+  e.label("tri_period_lo");
+  e.DB(...lowBytes(trianglePeriods));
+  e.label("tri_period_hi");
+  e.DB(...highBytes(trianglePeriods));
+
+  // --- ユーザー関数 ---
+  e.label("init_user");
+  for (const s of initFn.body) genStmt(s);
+  e.RTS();
+
+  e.label("update_user");
+  for (const s of updateFn.body) genStmt(s);
+  e.RTS();
+
+  const { bytes, labels } = e.assemble();
+  if (bytes.length > 0x3ffa) {
+    throw new CodegenError("生成されたコードが大きすぎます（割り込みベクタ領域と衝突しました）");
+  }
+
+  const prgRom = new Uint8Array(0x4000);
+  prgRom.set(bytes, 0);
+  const resetAddr = labels.get("reset")!;
+  const nmiAddr = labels.get("nmi_handler")!;
+  prgRom[0x3ffa] = nmiAddr & 0xff;
+  prgRom[0x3ffb] = (nmiAddr >> 8) & 0xff;
+  prgRom[0x3ffc] = resetAddr & 0xff;
+  prgRom[0x3ffd] = (resetAddr >> 8) & 0xff;
+  prgRom[0x3ffe] = resetAddr & 0xff; // IRQ/BRKは未使用のためresetにフォールバック
+  prgRom[0x3fff] = (resetAddr >> 8) & 0xff;
+
+  return prgRom;
+}

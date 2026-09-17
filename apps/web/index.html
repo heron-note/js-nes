@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>FamiJS Studio（仮称）</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <h1>FamiJS Studio<span class="subtitle">（仮称）</span></h1>
+      </header>
+
+      <div class="layout">
+        <section class="screen-pane">
+          <div class="screen-toolbar">
+            <button id="play-mode-btn" type="button">▶ プレイモード（全画面）</button>
+            <button id="exit-play-mode-btn" type="button" hidden>✕ エディタに戻る</button>
+          </div>
+          <canvas id="screen" width="256" height="240" aria-label="NES画面プレビュー"></canvas>
+          <p id="status" class="status">読み込み中...</p>
+
+          <div class="key-guide" id="key-guide">
+            <h3>操作方法（キーボード）</h3>
+            <div class="key-guide-row"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span>十字キー</span></div>
+            <div class="key-guide-row"><kbd>Z</kbd><span>Bボタン</span></div>
+            <div class="key-guide-row"><kbd>X</kbd><span>Aボタン</span></div>
+            <div class="key-guide-row"><kbd>Enter</kbd><span>START</span></div>
+            <div class="key-guide-row"><kbd>Shift</kbd><span>SELECT</span></div>
+          </div>
+
+          <div class="pad" id="virtual-pad" aria-hidden="false">
+            <div class="dpad">
+              <span></span>
+              <button data-btn="UP" aria-label="上">▲</button>
+              <span></span>
+              <button data-btn="LEFT" aria-label="左">◀</button>
+              <span></span>
+              <button data-btn="RIGHT" aria-label="右">▶</button>
+              <span></span>
+              <button data-btn="DOWN" aria-label="下">▼</button>
+              <span></span>
+            </div>
+            <div class="meta">
+              <button data-btn="SELECT" class="pill">SELECT</button>
+              <button data-btn="START" class="pill">START</button>
+            </div>
+            <div class="buttons">
+              <button data-btn="B" class="round">B</button>
+              <button data-btn="A" class="round">A</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="main-pane">
+          <nav class="tabs" role="tablist" aria-label="開発ツールタブ">
+            <button role="tab" aria-selected="true" data-tab="build">ビルド&amp;実行</button>
+            <button role="tab" aria-selected="false" data-tab="blocks">ブロック</button>
+            <button role="tab" aria-selected="false" data-tab="code">コード</button>
+            <button role="tab" aria-selected="false" data-tab="sprite">ドット絵</button>
+            <button role="tab" aria-selected="false" data-tab="sound">音源</button>
+            <button role="tab" aria-selected="false" data-tab="netplay">対戦</button>
+          </nav>
+
+          <div class="panels">
+            <div class="panel active" data-panel="build">
+              <h2>ビルド&amp;実行</h2>
+              <p class="muted">
+                「コード」タブで書いたDSLと「ドット絵」タブのタイルをビルドすると、その結果がここ（左のプレビュー画面）で実行されます。
+                起動直後は動作確認用の内蔵スモークテストROM（emulator-core単体の疎通確認用、画面を単色で塗りつぶすだけ）を表示しています。
+              </p>
+              <button id="reload-btn">スモークテストROMを再読み込み</button>
+
+              <h3 style="margin-top: 24px">外部の.nesファイルを読み込む</h3>
+              <p class="muted">
+                自作ROM以外に、Mapper 0/1/2/3/4/7対応の.nesファイル（ホームブリュー等、権利的に問題のないもの）を
+                読み込んで動作確認できます。読み込むと左のプレビュー画面で実行されます。
+              </p>
+              <div class="code-actions">
+                <input id="rom-upload-input" type="file" accept=".nes" />
+                <span id="rom-upload-status" class="muted"></span>
+              </div>
+
+              <h2 style="margin-top: 28px">配布パッケージ（M6）</h2>
+              <p class="muted">
+                「コード」タブでビルドすると、ここから配布用のカセットラベル画像やスタンドアロンHTMLを書き出せます。
+              </p>
+
+              <h3>カセットラベル画像</h3>
+              <div class="cartridge-label-form">
+                <input id="cart-title" type="text" placeholder="ゲームタイトル" maxlength="40" />
+                <input id="cart-author" type="text" placeholder="作者名" maxlength="30" />
+              </div>
+              <canvas id="cartridge-label-canvas" class="cartridge-label-canvas"></canvas>
+              <div class="code-actions">
+                <button id="cart-label-download-btn">ラベル画像(PNG)をダウンロード</button>
+              </div>
+
+              <h3 style="margin-top: 20px">スタンドアロンHTML書き出し</h3>
+              <p class="muted">
+                自作エミュレータ＋今ビルドしたROMを1つのHTMLファイルに同梱して書き出します（本番ビルド後のみ利用可能）。
+                サーバーなしでダブルクリックで遊べます。
+              </p>
+              <div class="code-actions">
+                <button id="standalone-export-btn" disabled>配布用HTMLを書き出す</button>
+                <span id="standalone-export-status" class="muted"></span>
+              </div>
+            </div>
+            <div class="panel" data-panel="blocks">
+              <h2>ブロックエディタ（Scratch風）</h2>
+              <p class="muted">
+                プログラミング言語の文法を覚えなくても、ブロックを組み合わせるだけでゲームが作れます。
+                組み立てたブロックは「ビルド&amp;実行」ボタンでJS風DSLのテキストに変換され（「コード」タブで中身を確認できます）、
+                そのまま本物の6502マシン語にコンパイルされます。
+              </p>
+              <div id="block-workspace" class="block-workspace"></div>
+              <div class="code-actions">
+                <button id="blocks-build-btn">ブロックをビルド&amp;実行</button>
+                <button id="blocks-reset-btn">サンプルに戻す</button>
+                <span id="blocks-build-status" class="muted"></span>
+              </div>
+            </div>
+            <div class="panel" data-panel="code">
+              <h2>コードエディタ（JS風DSL・v0）</h2>
+              <p class="muted">
+                書いたコードは「ビルド&amp;実行」ボタンで本物の6502マシン語にコンパイルされ、
+                そのまま画面プレビューで実行されます。仕様は <code>docs/03_DSL_SPEC.md</code> を参照。
+              </p>
+              <textarea id="code-editor" spellcheck="false" rows="18"></textarea>
+              <div class="code-actions">
+                <button id="build-btn">ビルド&amp;実行</button>
+                <button id="download-btn" disabled>.nesをダウンロード</button>
+                <span id="build-status" class="muted"></span>
+              </div>
+              <pre id="build-error" class="build-error" hidden></pre>
+            </div>
+            <div class="panel" data-panel="sprite">
+              <h2>ドット絵エディタ（CHRタイル・8x8）</h2>
+              <p class="muted">
+                右の「タイルシート」には0〜255番まで<strong>256枚の絵を別々に</strong>描けます
+                （ファミコン実機のスプライト用パターンテーブルがそのまま持てる上限で、これ以上はMMC1等の
+                「バンク切り替え」に対応した拡張マッパーが必要になります。本ツールはMapper 0のみ対応）。
+                プレイヤー・敵・弾など、キャラクターごとに違う番号のタイルへ絵を描いてください
+                （右下の数字が番号。クリックか、下の「タイル番号で移動」で切り替えて編集できます）。
+                描いたタイルは「ビルド&amp;実行」時にCHR-ROMへパッキングされ、
+                <code>drawSprite(id, x, y, tile, palette)</code> の <code>tile</code> 番号として画面に表示されます。
+                同じコード内で <code>drawSprite(0, ..., 0, 0)</code> と <code>drawSprite(1, ..., 1, 1)</code> のように
+                <code>id</code>（画面上の何番目の表示枠か）・<code>tile</code>（どの絵を使うか）・
+                <code>palette</code>（どの配色を使うか）を変えて複数回呼べば、複数のキャラクターを同時に画面へ出せます。
+                下のパレットはあくまで編集時のプレビュー用で、実際の色は実行中のゲームコードが
+                <code>setSpritePalette()</code>（スプライト用）/ <code>setPalette()</code>（背景用）で決めます。
+              </p>
+
+              <div class="sprite-editor">
+                <div>
+                  <canvas id="tile-edit" aria-label="タイル編集キャンバス"></canvas>
+                  <div id="palette-swatches" class="palette-swatches"></div>
+                </div>
+                <div>
+                  <p class="muted" style="margin-top: 0">タイルシート（クリックで選択・番号がdrawSpriteのtile引数）</p>
+                  <label class="tile-jump-label">
+                    タイル番号で移動
+                    <input id="tile-jump-input" type="number" min="0" max="255" value="0" class="tile-jump-input" />
+                  </label>
+                  <div id="tile-sheet" class="tile-sheet"></div>
+                </div>
+              </div>
+            </div>
+            <div class="panel" data-panel="sound">
+              <h2>音源（APU）</h2>
+              <p class="muted">
+                DSLコードから <code>playTone(channel, noteIndex, duration)</code> を呼ぶと、
+                効果音（SE）を鳴らせます（曲を打ち込むBGMトラッカーはまだ準備中。詳細は
+                <code>docs/05_ASSET_EDITOR_SPEC.md</code> を参照）。
+                下で音を試聴して、コード/ブロックに使うchannel・noteIndexの値を確認できます。
+              </p>
+
+              <h3>音を試してみる</h3>
+              <p class="muted">
+                「鳴らす」を押すと、選んだチャンネル・音階で <code>playTone()</code> と同じ音がその場で再生されます
+                （初回はブラウザの音声再生許可のため、一度クリックが必要です）。
+              </p>
+              <div class="sound-tester">
+                <label>チャンネル
+                  <select id="tone-channel">
+                    <option value="0">0: Pulse1（矩形波）</option>
+                    <option value="1">1: Pulse2（矩形波）</option>
+                    <option value="2">2: Triangle（三角波）</option>
+                    <option value="3">3: Noise（ノイズ）</option>
+                  </select>
+                </label>
+                <label>音階（noteIndex）
+                  <select id="tone-note"></select>
+                </label>
+                <button id="tone-play-btn">▶ 鳴らす</button>
+              </div>
+
+              <h3 style="margin-top: 24px">実行中のチャンネル状態（モニタ）</h3>
+              <p class="muted">
+                ゲーム実行中に <code>playTone()</code> が呼ばれると、下の4チャンネルの音量・周波数がリアルタイムに表示されます。
+                サンプルコードでは A ボタン（キーボード: X、仮想パッドのAボタン）を押すと音が鳴ります。
+              </p>
+              <div id="channel-meters" class="channel-meters"></div>
+            </div>
+            <div class="panel" data-panel="netplay">
+              <h2>オンライン対戦（WebRTC・画面ストリーミング型）</h2>
+              <p class="muted">
+                サーバーを介さないP2P接続で2コンをオンライン対戦にする（[06_NETPLAY_SPEC.md](../06_NETPLAY_SPEC.md)のPhase1）。
+                signalingサーバーを使わない簡易実装のため、招待コード（テキスト）を手動でやり取りする必要がある。
+              </p>
+
+              <div class="netplay-roles">
+                <section class="netplay-role">
+                  <h3>ホストになる（1コン）</h3>
+                  <button id="netplay-host-start">ホストとして開始</button>
+                  <label class="netplay-label">① 招待コードをコピーしてゲストに送る</label>
+                  <textarea id="netplay-host-offer" class="netplay-code" readonly rows="3" placeholder="ここに招待コードが表示されます"></textarea>
+                  <label class="netplay-label">② ゲストから届いた応答コードを貼り付けて接続</label>
+                  <textarea id="netplay-host-answer" class="netplay-code" rows="3" placeholder="ゲストの応答コードを貼り付け"></textarea>
+                  <button id="netplay-host-connect">応答コードで接続</button>
+                  <p id="netplay-host-status" class="muted">未接続</p>
+                </section>
+
+                <section class="netplay-role">
+                  <h3>ゲストとして参加（2コン）</h3>
+                  <label class="netplay-label">① ホストから届いた招待コードを貼り付け</label>
+                  <textarea id="netplay-guest-offer" class="netplay-code" rows="3" placeholder="ホストの招待コードを貼り付け"></textarea>
+                  <button id="netplay-guest-join">参加して応答コードを生成</button>
+                  <label class="netplay-label">② 生成された応答コードをホストに送る</label>
+                  <textarea id="netplay-guest-answer" class="netplay-code" readonly rows="3" placeholder="ここに応答コードが表示されます"></textarea>
+                  <p id="netplay-guest-status" class="muted">未接続</p>
+                  <video id="netplay-guest-video" class="netplay-video" autoplay playsinline muted></video>
+                </section>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <!-- スタンドアロン配布HTML用のプレースホルダー。書き出し時にこのJSONブロックの中身が実データで置換される。
+         type="application/json"のためブラウザはこれをJSとして実行しない（安全にデータだけを埋め込める）。 -->
+    <script id="embedded-data" type="application/json">{"rom":null,"source":null}</script>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
