@@ -255,6 +255,34 @@ function blocksToCode(blocks: Blockly.Block[]): string {
     .join("");
 }
 
+/**
+ * 1つのパーツ専用ワークスペース（Phase 6: `part Name { ... }`のラッパーを除いた中身だけを
+ * 保持するワークスペース）から、そのパーツのfield/behaviorのDSLテキストを生成する。
+ */
+export function generatePartBody(workspace: Blockly.Workspace): string {
+  const fieldBlocks = workspace.getBlocksByType("fjs_field_decl", false);
+  const behaviorBlocks = workspace.getBlocksByType("fjs_behavior_decl", false);
+  return blocksToCode(fieldBlocks) + blocksToCode(behaviorBlocks);
+}
+
+/**
+ * 1つのシーン専用ワークスペース（`scene Name { ... }`のラッパーを除いた中身だけを保持する
+ * ワークスペース）から、そのシーンのinstance宣言・init/updateのDSLテキストを生成する。
+ */
+export function generateSceneBody(workspace: Blockly.Workspace): string {
+  const instanceBlocks = workspace.getBlocksByType("fjs_instance_decl", false);
+  const initBlocks = workspace.getBlocksByType("fjs_scene_event_init", false);
+  const updateBlocks = workspace.getBlocksByType("fjs_scene_event_update", false);
+
+  const initCode = initBlocks.length > 0 ? famijsGenerator.blockToCode(initBlocks[0]!) : "function init() {\n}\n\n";
+  const updateCode =
+    updateBlocks.length > 0 ? famijsGenerator.blockToCode(updateBlocks[0]!) : "function update() {\n}\n\n";
+  const initStr = Array.isArray(initCode) ? initCode[0] : initCode;
+  const updateStr = Array.isArray(updateCode) ? updateCode[0] : updateCode;
+
+  return blocksToCode(instanceBlocks) + initStr + updateStr;
+}
+
 /** ワークスペース全体からDSLソーステキストを生成する。 */
 export function generateSource(workspace: Blockly.Workspace): string {
   const globalBlocks = workspace.getBlocksByType("fjs_let", false);

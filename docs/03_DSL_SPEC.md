@@ -100,10 +100,57 @@ function update() {
 ゼロページレイアウト: `$00`=ボタン状態キャッシュ（現在フレーム）、`$01`=ボタン状態キャッシュ（直前フレーム、`_just_pressed`判定用）、
 `$02`-`$06`=ビルトイン関数の引数スクラッチ、`$07`-`$0A`=サウンドチャンネルごとの残り発音フレーム数、`$0B`以降=ユーザー宣言のグローバル変数（宣言順）。
 
+## v1: シーン/パーツ構成モデル（M11で追加）
+
+v0の`let`/`function init/update`に加え、`part`/`scene`宣言を追加した（既存のv0構文は無変更・
+そのままの意味で使える）。ファミコンのハード制約（ゼロページ256バイト共有・浅いスタック）を踏まえ、
+「パーツ種別ごとに1本の再帰なしサブルーチン + インスタンス状態はゼロページではなく通常RAM
+（`$0300`-`$07FF`）にSoA配列として確保」という設計で実現している（詳細実装は
+`packages/dsl-compiler/src/codegen.ts`のコメント参照）。
+
+```javascript
+part Ball {
+  field x = 128;       // インスタンスごとのフィールド（初期値は数値リテラルのみ、v0のletと同様）
+  field goingRight = 1;
+
+  behavior move(self) {          // このパーツの1インスタンス分の振る舞い。引数は必ず self
+    if (self.goingRight) { self.x += 2; } else { self.x -= 2; }
+    drawSprite(1, self.x, 120, 0, 0); // tile引数はこのパーツ内でのローカル0起点番号
+  }
+}
+
+scene Main {
+  instance ball: Ball;           // パーツのインスタンスをこのシーンに配置
+  instance paddle: Paddle;
+
+  function init() { setPalette(0, 1, 48, 0, 0); }
+
+  function update() {
+    Ball.move(ball);             // PartType.behaviorName(instanceName); で振る舞いを実行
+    // instanceName.field でパーツをまたいだ状態の読み書き（当たり判定等はここに書く）
+    if (ball.x < 28) {
+      if (ball.y > paddle.y) { ball.goingRight = 1; }
+    }
+  }
+}
+```
+
+- `part`/`scene`を1つでも使う場合、トップレベルの`function init/update`は使用できない
+  （sceneの`init`/`update`を使う）。`scene`は現状ちょうど1つのみ（複数シーンの切り替えは未対応）。
+- `self.field`はbehavior内でのみ、`instanceName.field`はscene内でのみ使用できる。
+- `drawSprite(...)`のtile引数（数値リテラルの場合のみ）は、そのパーツ専用のタイルシート内での
+  ローカル0起点番号として扱われ、ビルド時（`apps/web/src/projectBuild.ts`のアセットリンク）に
+  他パーツと重複しないグローバルなCHR-ROM番号へ自動変換される。
+- 音も名前付きアセットとして扱い、コード中の`playSound(名前)`（DSL自体の構文ではなく、
+  Web IDEのプロジェクトビルド時に`playTone(channel, noteIndex, duration)`へ機械的に置き換えられる
+  糖衣構文）として呼び出せる。`compile()`自体は`playSound`を認識しない点に注意
+  （`games/game-01-pong/main.js`のような生の`.js`ソースを直接`compile()`に渡す場合は
+  `playTone(...)`を直接書く）。
+
 ## エラー・制約の扱い方針
 
 現状（v0実装）では、ゼロページの枯渇（256バイト超過）・未宣言変数の参照・`init`/`update`の欠落などは
-コンパイル時に例外（`ParseError` / `CodegenError`）として投げられ、Web IDEの「コード」タブ上にエラーメッセージとして表示される。
+コンパイル時に例外（`ParseError` / `CodegenError`）として投げられ、Web IDEの「ビルド&実行」タブ上にエラーメッセージとして表示される。
 ゼロページ枯渇時のメッセージは「ゼロページ（256バイト）がパンクしました！」のように、当初構想の「実機の制約を楽しむ」トーンを踏襲している。
 スプライト同一ライン9個超過などPPU側の制約可視化は、PPUのスプライト対応（M4）実装後に追加する。
 

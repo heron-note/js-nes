@@ -251,7 +251,7 @@ button#build-btn {
   cursor: pointer;
 }
 
-#code-editor {
+.dsl-textarea {
   width: 100%;
   min-height: 320px;
   background: #0b0d12;
@@ -271,6 +271,79 @@ button#build-btn {
   align-items: center;
   gap: 12px;
   margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.entity-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+
+.entity-toolbar select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  min-width: 160px;
+}
+
+.subtabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.subtabs button {
+  background: none;
+  color: var(--muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.subtabs button[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.subpanel {
+  display: none;
+  padding-top: 12px;
+}
+
+.subpanel.active {
+  display: block;
+}
+
+.entity-list {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.entity-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.entity-list li button {
+  margin-left: auto;
 }
 
 .sprite-editor {

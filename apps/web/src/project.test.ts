@@ -1,17 +1,18 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   ProjectFormatError,
-  createProject,
+  createEmptyProject,
   loadProjectFromLocalStorage,
   parseProject,
   saveProjectToLocalStorage,
   serializeProject,
+  type Project,
 } from "./project.js";
 
 /**
- * DSL v1(シーン/パーツ構成)導入プロジェクトのPhase 5ゲート。
- * これまで存在しなかった「プロジェクトの保存/読込」を検証する。
- * C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md のPhase 5参照。
+ * DSL v1(シーン/パーツ構成)導入プロジェクトのPhase 5→6ゲート。
+ * プロジェクトは「パーツ/シーン/サウンドの集まり」として保存・復元できる。
+ * C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md のPhase 5/6参照。
  */
 
 // vitestのデフォルト(node環境)にはlocalStorageが無いため、テスト用の最小実装を用意する。
@@ -43,12 +44,20 @@ beforeEach(() => {
 
 const SAMPLE_TILE = new Array(64).fill(1);
 
+function sampleProject(): Project {
+  const project = createEmptyProject();
+  project.title = "テストゲーム";
+  project.author = "heron-note";
+  project.parts.push({ name: "Ball", tiles: [SAMPLE_TILE], code: "field x = 128;\nfield y = 120;\n" });
+  project.scenes.push({ name: "Main", code: "instance ball: Ball;\nfunction init() {}\nfunction update() {}\n" });
+  project.sounds.push({ name: "Jump", channel: 0, note: 28, duration: 5 });
+  return project;
+}
+
 describe("Project: 作成・シリアライズ・パース", () => {
-  it("createProjectはcode/tilesからバージョン付きのProjectを作る", () => {
-    const project = createProject("let x = 0;\n", [SAMPLE_TILE]);
-    expect(project.version).toBe(1);
-    expect(project.code).toBe("let x = 0;\n");
-    expect(project.tiles).toEqual([SAMPLE_TILE]);
+  it("createEmptyProjectは空のparts/scenes/soundsを持つProjectを作る", () => {
+    const project = createEmptyProject();
+    expect(project.version).toBe(2);
     expect(project.title).toBe("");
     expect(project.author).toBe("");
     expect(project.parts).toEqual([]);
@@ -57,12 +66,8 @@ describe("Project: 作成・シリアライズ・パース", () => {
   });
 
   it("serializeProject → parseProject のラウンドトリップで内容が保持される", () => {
-    const original = createProject("function init() {}\nfunction update() {}\n", [SAMPLE_TILE, SAMPLE_TILE]);
-    original.title = "テストゲーム";
-    original.author = "heron-note";
-
+    const original = sampleProject();
     const restored = parseProject(serializeProject(original));
-
     expect(restored).toEqual(original);
   });
 
@@ -70,28 +75,42 @@ describe("Project: 作成・シリアライズ・パース", () => {
     expect(() => parseProject("{ not valid json")).toThrow(ProjectFormatError);
   });
 
-  it("codeフィールドが無い/不正な型だとProjectFormatErrorを投げる", () => {
-    expect(() => parseProject(JSON.stringify({ tiles: [] }))).toThrow(ProjectFormatError);
-    expect(() => parseProject(JSON.stringify({ code: 123, tiles: [] }))).toThrow(ProjectFormatError);
+  it("parts/scenesフィールドが無い/不正な型だとProjectFormatErrorを投げる", () => {
+    expect(() => parseProject(JSON.stringify({ scenes: [] }))).toThrow(ProjectFormatError);
+    expect(() => parseProject(JSON.stringify({ parts: [], scenes: "x" }))).toThrow(ProjectFormatError);
   });
 
-  it("tilesの要素が64要素・0-3の整数でないとProjectFormatErrorを投げる", () => {
-    expect(() => parseProject(JSON.stringify({ code: "", tiles: [[1, 2, 3]] }))).toThrow(ProjectFormatError);
-    expect(() => parseProject(JSON.stringify({ code: "", tiles: [new Array(64).fill(9)] }))).toThrow(
-      ProjectFormatError,
-    );
-    expect(() => parseProject(JSON.stringify({ code: "", tiles: [new Array(64).fill(1.5)] }))).toThrow(
-      ProjectFormatError,
-    );
+  it("partのtilesが64要素・0-3の整数でないとProjectFormatErrorを投げる", () => {
+    expect(() =>
+      parseProject(JSON.stringify({ parts: [{ name: "A", code: "", tiles: [[1, 2, 3]] }], scenes: [] })),
+    ).toThrow(ProjectFormatError);
   });
 
-  it("title/author/parts/scenes/soundsが欠けていても妥当なデフォルトで補完される（後方互換）", () => {
-    const project = parseProject(JSON.stringify({ code: "let x = 0;", tiles: [] }));
+  it("partやsceneにnameが無いとProjectFormatErrorを投げる", () => {
+    expect(() => parseProject(JSON.stringify({ parts: [{ code: "", tiles: [] }], scenes: [] }))).toThrow(
+      ProjectFormatError,
+    );
+    expect(() => parseProject(JSON.stringify({ parts: [], scenes: [{ code: "" }] }))).toThrow(ProjectFormatError);
+  });
+
+  it("soundsのchannel/note/durationが不正だとProjectFormatErrorを投げる", () => {
+    expect(() =>
+      parseProject(JSON.stringify({ parts: [], scenes: [], sounds: [{ name: "X", channel: 9, note: 0, duration: 0 }] })),
+    ).toThrow(ProjectFormatError);
+  });
+
+  it("title/author/soundsが欠けていても妥当なデフォルトで補完される（後方互換）", () => {
+    const project = parseProject(JSON.stringify({ parts: [], scenes: [] }));
     expect(project.title).toBe("");
     expect(project.author).toBe("");
-    expect(project.parts).toEqual([]);
-    expect(project.scenes).toEqual([]);
     expect(project.sounds).toEqual([]);
+  });
+
+  it("part/sceneのblocksフィールド（Blockly保存状態）は不透明なデータとしてそのまま保持される", () => {
+    const project = createEmptyProject();
+    project.parts.push({ name: "Ball", tiles: [], code: "", blocks: { blocks: { languageVersion: 0 } } });
+    const restored = parseProject(serializeProject(project));
+    expect(restored.parts[0]!.blocks).toEqual({ blocks: { languageVersion: 0 } });
   });
 });
 
@@ -101,7 +120,7 @@ describe("Project: localStorage永続化", () => {
   });
 
   it("保存したプロジェクトを読み込める", () => {
-    const project = createProject("let x = 1;\n", [SAMPLE_TILE]);
+    const project = sampleProject();
     saveProjectToLocalStorage(project);
     expect(loadProjectFromLocalStorage()).toEqual(project);
   });

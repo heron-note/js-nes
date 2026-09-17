@@ -56,9 +56,8 @@
         <section class="main-pane">
           <nav class="tabs" role="tablist" aria-label="開発ツールタブ">
             <button role="tab" aria-selected="true" data-tab="build">ビルド&amp;実行</button>
-            <button role="tab" aria-selected="false" data-tab="blocks">ブロック</button>
-            <button role="tab" aria-selected="false" data-tab="code">コード</button>
-            <button role="tab" aria-selected="false" data-tab="sprite">ドット絵</button>
+            <button role="tab" aria-selected="false" data-tab="parts">パーツ</button>
+            <button role="tab" aria-selected="false" data-tab="scenes">シーン</button>
             <button role="tab" aria-selected="false" data-tab="sound">音源</button>
             <button role="tab" aria-selected="false" data-tab="netplay">対戦</button>
           </nav>
@@ -67,14 +66,26 @@
             <div class="panel active" data-panel="build">
               <h2>ビルド&amp;実行</h2>
               <p class="muted">
-                「コード」タブで書いたDSLと「ドット絵」タブのタイルをビルドすると、その結果がここ（左のプレビュー画面）で実行されます。
+                「パーツ」タブで作った各パーツ(ドット絵+振る舞い)と「シーン」タブで作った各シーン(パーツの配置+進行ロジック)を
+                全部combineして1本の.nesにコンパイルし、その結果がここ（左のプレビュー画面）で実行されます。
                 起動直後は動作確認用の内蔵スモークテストROM（emulator-core単体の疎通確認用、画面を単色で塗りつぶすだけ）を表示しています。
               </p>
-              <button id="reload-btn">スモークテストROMを再読み込み</button>
+              <div class="code-actions">
+                <button id="build-btn">プロジェクトをビルド&amp;実行</button>
+                <button id="download-btn" disabled>.nesをダウンロード</button>
+                <button id="reload-btn">スモークテストROMを再読み込み</button>
+                <span id="build-status" class="muted"></span>
+              </div>
+              <pre id="build-error" class="build-error" hidden></pre>
+
+              <p class="muted" style="margin-top: 12px">
+                実際にコンパイルされた最終的なDSLソース（パーツ/シーンを結合し、<code>playSound()</code>を解決した後の姿）:
+              </p>
+              <textarea id="build-source-preview" class="dsl-textarea" readonly rows="8" style="min-height: 140px"></textarea>
 
               <h3 style="margin-top: 24px">プロジェクトの保存/読込</h3>
               <p class="muted">
-                「コード」タブのDSLと「ドット絵」タブのタイルは、ビルドするたびにブラウザ内(localStorage)へ
+                「パーツ」「シーン」タブでの編集内容は、ビルドするたびにブラウザ内(localStorage)へ
                 自動保存され、次回このページを開いたときに自動で復元されます。
                 別のPCへ移したり、バックアップを取りたい場合はJSONファイルとして書き出し/読み込みできます。
               </p>
@@ -96,7 +107,7 @@
 
               <h2 style="margin-top: 28px">配布パッケージ（M6）</h2>
               <p class="muted">
-                「コード」タブでビルドすると、ここから配布用のカセットラベル画像やスタンドアロンHTMLを書き出せます。
+                「ビルド&amp;実行」でビルドすると、ここから配布用のカセットラベル画像やスタンドアロンHTMLを書き出せます。
               </p>
 
               <h3>カセットラベル画像</h3>
@@ -119,79 +130,116 @@
                 <span id="standalone-export-status" class="muted"></span>
               </div>
             </div>
-            <div class="panel" data-panel="blocks">
-              <h2>ブロックエディタ（Scratch風）</h2>
+            <div class="panel" data-panel="parts">
+              <h2>パーツ</h2>
               <p class="muted">
-                プログラミング言語の文法を覚えなくても、ブロックを組み合わせるだけでゲームが作れます。
-                組み立てたブロックは「ビルド&amp;実行」ボタンでJS風DSLのテキストに変換され（「コード」タブで中身を確認できます）、
-                そのまま本物の6502マシン語にコンパイルされます。
+                ドット絵と振る舞い(プログラム)をセットにした「パーツ」を作ります。1つのパーツは
+                シーン側で何個でもインスタンスとして配置でき、それぞれ独立した位置・状態を持てます
+                （例: 同じ「敵」パーツを3体配置、等）。
               </p>
-              <div id="block-workspace" class="block-workspace"></div>
-              <div class="code-actions">
-                <button id="blocks-build-btn">ブロックをビルド&amp;実行</button>
-                <button id="blocks-reset-btn">サンプルに戻す</button>
-                <span id="blocks-build-status" class="muted"></span>
+              <div class="entity-toolbar">
+                <select id="part-select" aria-label="編集するパーツ"></select>
+                <button id="part-add-btn" type="button">＋新しいパーツ</button>
+                <button id="part-rename-btn" type="button">名前を変更</button>
+                <button id="part-delete-btn" type="button">削除</button>
               </div>
-            </div>
-            <div class="panel" data-panel="code">
-              <h2>コードエディタ（JS風DSL・v0）</h2>
-              <p class="muted">
-                書いたコードは「ビルド&amp;実行」ボタンで本物の6502マシン語にコンパイルされ、
-                そのまま画面プレビューで実行されます。仕様は <code>docs/03_DSL_SPEC.md</code> を参照。
-              </p>
-              <textarea id="code-editor" spellcheck="false" rows="18"></textarea>
-              <div class="code-actions">
-                <button id="build-btn">ビルド&amp;実行</button>
-                <button id="download-btn" disabled>.nesをダウンロード</button>
-                <span id="build-status" class="muted"></span>
-              </div>
-              <pre id="build-error" class="build-error" hidden></pre>
-            </div>
-            <div class="panel" data-panel="sprite">
-              <h2>ドット絵エディタ（CHRタイル・8x8）</h2>
-              <p class="muted">
-                右の「タイルシート」には0〜255番まで<strong>256枚の絵を別々に</strong>描けます
-                （ファミコン実機のスプライト用パターンテーブルがそのまま持てる上限で、これ以上はMMC1等の
-                「バンク切り替え」に対応した拡張マッパーが必要になります。本ツールはMapper 0のみ対応）。
-                プレイヤー・敵・弾など、キャラクターごとに違う番号のタイルへ絵を描いてください
-                （右下の数字が番号。クリックか、下の「タイル番号で移動」で切り替えて編集できます）。
-                描いたタイルは「ビルド&amp;実行」時にCHR-ROMへパッキングされ、
-                <code>drawSprite(id, x, y, tile, palette)</code> の <code>tile</code> 番号として画面に表示されます。
-                同じコード内で <code>drawSprite(0, ..., 0, 0)</code> と <code>drawSprite(1, ..., 1, 1)</code> のように
-                <code>id</code>（画面上の何番目の表示枠か）・<code>tile</code>（どの絵を使うか）・
-                <code>palette</code>（どの配色を使うか）を変えて複数回呼べば、複数のキャラクターを同時に画面へ出せます。
-                下のパレットはあくまで編集時のプレビュー用で、実際の色は実行中のゲームコードが
-                <code>setSpritePalette()</code>（スプライト用）/ <code>setPalette()</code>（背景用）で決めます。
-              </p>
 
-              <div class="sprite-editor">
-                <div>
-                  <canvas id="tile-edit" aria-label="タイル編集キャンバス"></canvas>
-                  <div id="palette-swatches" class="palette-swatches"></div>
+              <div id="part-editor" hidden>
+                <div class="subtabs" role="tablist" aria-label="パーツの編集方法">
+                  <button role="tab" aria-selected="true" data-subtab="code">コード</button>
+                  <button role="tab" aria-selected="false" data-subtab="blocks">ブロック</button>
                 </div>
-                <div>
-                  <p class="muted" style="margin-top: 0">タイルシート（クリックで選択・番号がdrawSpriteのtile引数）</p>
-                  <label class="tile-jump-label">
-                    タイル番号で移動
-                    <input id="tile-jump-input" type="number" min="0" max="255" value="0" class="tile-jump-input" />
-                  </label>
-                  <div id="tile-sheet" class="tile-sheet"></div>
+
+                <div class="subpanel active" data-subpanel="code">
+                  <p class="muted">
+                    <code>field 名前 = 初期値;</code> でこのパーツのインスタンスごとの状態を宣言し、
+                    <code>behavior 名前(self) { ... }</code> で振る舞いを書きます。
+                    <code>self.フィールド名</code>で自分自身の状態を読み書きできます。仕様は
+                    <code>docs/03_DSL_SPEC.md</code> を参照。
+                  </p>
+                  <textarea id="part-code-editor" class="dsl-textarea" spellcheck="false" rows="14"></textarea>
+                </div>
+                <div class="subpanel" data-subpanel="blocks">
+                  <div id="part-block-workspace" class="block-workspace"></div>
+                  <div class="code-actions">
+                    <button id="part-blocks-build-btn" type="button">ブロックからコードを生成</button>
+                    <span id="part-blocks-status" class="muted"></span>
+                  </div>
+                </div>
+
+                <h3 style="margin-top: 20px">ドット絵（このパーツ専用）</h3>
+                <p class="muted">
+                  右の「タイルシート」にはこのパーツ専用のタイルを0〜255番まで<strong>256枚まで</strong>描けます。
+                  behavior内の<code>drawSprite(id, x, y, tile, palette)</code>の<code>tile</code>には
+                  <strong>このパーツの中でのローカル番号</strong>（0起点）を指定します。他のパーツと番号が
+                  重複していても構いません（ビルド時に自動でCHR-ROM全体の番号へ変換されます）。
+                </p>
+                <div class="sprite-editor">
+                  <div>
+                    <canvas id="tile-edit" aria-label="タイル編集キャンバス"></canvas>
+                    <div id="palette-swatches" class="palette-swatches"></div>
+                  </div>
+                  <div>
+                    <p class="muted" style="margin-top: 0">タイルシート（クリックで選択・番号がdrawSpriteのtile引数）</p>
+                    <label class="tile-jump-label">
+                      タイル番号で移動
+                      <input id="tile-jump-input" type="number" min="0" max="255" value="0" class="tile-jump-input" />
+                    </label>
+                    <div id="tile-sheet" class="tile-sheet"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="panel" data-panel="scenes">
+              <h2>シーン</h2>
+              <p class="muted">
+                パーツのインスタンスを配置し、進行ロジック（<code>init</code>/<code>update</code>）を書きます。
+                <code>instanceName.field</code>で他のパーツのインスタンスの状態を読み書きでき、パーツをまたいだ
+                当たり判定などはここに書きます（例: <code>ball.y &gt; paddle.y</code>）。現在は1プロジェクトにつき
+                シーンをちょうど1つだけ使えます。
+              </p>
+              <div class="entity-toolbar">
+                <select id="scene-select" aria-label="編集するシーン"></select>
+                <button id="scene-add-btn" type="button">＋新しいシーン</button>
+                <button id="scene-rename-btn" type="button">名前を変更</button>
+                <button id="scene-delete-btn" type="button">削除</button>
+              </div>
+
+              <div id="scene-editor" hidden>
+                <div class="subtabs" role="tablist" aria-label="シーンの編集方法">
+                  <button role="tab" aria-selected="true" data-subtab="code">コード</button>
+                  <button role="tab" aria-selected="false" data-subtab="blocks">ブロック</button>
+                </div>
+
+                <div class="subpanel active" data-subpanel="code">
+                  <p class="muted">
+                    <code>instance 名前: パーツ種別;</code>でパーツを配置し、<code>function init() {}</code> /
+                    <code>function update() {}</code>で進行ロジックを書きます。
+                  </p>
+                  <textarea id="scene-code-editor" class="dsl-textarea" spellcheck="false" rows="14"></textarea>
+                </div>
+                <div class="subpanel" data-subpanel="blocks">
+                  <div id="scene-block-workspace" class="block-workspace"></div>
+                  <div class="code-actions">
+                    <button id="scene-blocks-build-btn" type="button">ブロックからコードを生成</button>
+                    <span id="scene-blocks-status" class="muted"></span>
+                  </div>
                 </div>
               </div>
             </div>
             <div class="panel" data-panel="sound">
               <h2>音源（APU）</h2>
               <p class="muted">
-                DSLコードから <code>playTone(channel, noteIndex, duration)</code> を呼ぶと、
-                効果音（SE）を鳴らせます（曲を打ち込むBGMトラッカーはまだ準備中。詳細は
-                <code>docs/05_ASSET_EDITOR_SPEC.md</code> を参照）。
-                下で音を試聴して、コード/ブロックに使うchannel・noteIndexの値を確認できます。
+                ドット絵パーツと同じように、音も「名前付きのアセット」として保存し、パーツ/シーンの
+                コードから <code>playSound(名前)</code> として呼び出せます（ビルド時に自動で
+                <code>playTone(channel, noteIndex, duration)</code> へ変換されます）。
+                曲を打ち込むBGMトラッカーはまだ準備中（詳細は<code>docs/05_ASSET_EDITOR_SPEC.md</code>を参照）。
               </p>
 
-              <h3>音を試してみる</h3>
+              <h3>音を作る/試聴する</h3>
               <p class="muted">
-                「鳴らす」を押すと、選んだチャンネル・音階で <code>playTone()</code> と同じ音がその場で再生されます
-                （初回はブラウザの音声再生許可のため、一度クリックが必要です）。
+                「鳴らす」でその場で試聴できます（初回はブラウザの音声再生許可のため、一度クリックが必要です）。
+                気に入ったら名前を付けて保存すると、コードから呼び出せるようになります。
               </p>
               <div class="sound-tester">
                 <label>チャンネル
@@ -205,13 +253,24 @@
                 <label>音階（noteIndex）
                   <select id="tone-note"></select>
                 </label>
-                <button id="tone-play-btn">▶ 鳴らす</button>
+                <label>長さ(フレーム)
+                  <input id="tone-duration" type="number" min="1" max="255" value="20" class="tile-jump-input" />
+                </label>
+                <button id="tone-play-btn" type="button">▶ 鳴らす</button>
               </div>
+              <div class="code-actions">
+                <input id="sound-name-input" type="text" placeholder="サウンド名 (例: Jump)" maxlength="30" />
+                <button id="sound-save-btn" type="button">名前を付けて保存</button>
+                <span id="sound-save-status" class="muted"></span>
+              </div>
+
+              <h3 style="margin-top: 20px">保存済みサウンド</h3>
+              <p class="muted">コードから <code>playSound(名前)</code> として呼び出せます。クリックで試聴・編集できます。</p>
+              <ul id="sound-list" class="entity-list"></ul>
 
               <h3 style="margin-top: 24px">実行中のチャンネル状態（モニタ）</h3>
               <p class="muted">
-                ゲーム実行中に <code>playTone()</code> が呼ばれると、下の4チャンネルの音量・周波数がリアルタイムに表示されます。
-                サンプルコードでは A ボタン（キーボード: X、仮想パッドのAボタン）を押すと音が鳴ります。
+                ゲーム実行中に音が鳴ると、下の4チャンネルの音量・周波数がリアルタイムに表示されます。
               </p>
               <div id="channel-meters" class="channel-meters"></div>
             </div>

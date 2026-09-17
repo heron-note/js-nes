@@ -8,12 +8,15 @@ import { compile } from "./compile.js";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PONG_SOURCE = readFileSync(join(__dirname, "..", "..", "..", "games", "game-01-pong", "main.js"), "utf-8");
 
-// games/game-01-pong/main.js のグローバル変数宣言順（USER_VARS_START = 0x0B）に基づく。
-const BALL_X = 0x0b;
-const BALL_Y = 0x0c;
-const BALL_GOING_RIGHT = 0x0d;
-const BALL_GOING_DOWN = 0x0e;
-const PADDLE_Y = 0x0f;
+// games/game-01-pong/main.js のRAM(SoA)アロケーション順（part宣言順→フィールド宣言順、
+// PART_RAM_START=$0300起点）に基づく。part Ball { x, y, goingRight, goingDown } →
+// part Paddle { y, bottom }の順。
+const BALL_X = 0x0300;
+const BALL_Y = 0x0301;
+const BALL_GOING_RIGHT = 0x0302;
+const BALL_GOING_DOWN = 0x0303;
+const PADDLE_Y = 0x0304;
+const PADDLE_BOTTOM = 0x0305;
 
 function stepUntil(nes: Nes, predicate: () => boolean, maxFrames = 20): void {
   for (let i = 0; i < maxFrames; i++) {

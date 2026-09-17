@@ -1,30 +1,35 @@
 import { BUTTON, Nes, buildSmokeRom, type ButtonName } from "@js-nes/emulator-core";
 import { compile } from "@js-nes/dsl-compiler";
-import { downloadRom, packChrRom, packINesRom } from "@js-nes/rom-builder";
+import { downloadRom } from "@js-nes/rom-builder";
 import { getTiles, initSpriteEditor, setTiles } from "./spriteEditor.js";
-import {
-  createProject,
-  loadProjectFromLocalStorage,
-  parseProject,
-  saveProjectToLocalStorage,
-  serializeProject,
-  ProjectFormatError,
-} from "./project.js";
 import { AudioEngine, noteIndexToLabel } from "./audio.js";
 import { downloadCanvasAsPng, renderCartridgeLabel } from "./cartridgeLabel.js";
 import { exportStandaloneHtml } from "./standaloneExport.js";
 import { NetplayGuest, NetplayHost } from "./netplay.js";
 import * as Blockly from "blockly/core";
-import { generateSource, initBlockEditor, loadDefaultWorkspace } from "./blocks/blockEditor.js";
+import { generatePartBody, generateSceneBody, initBlockEditor } from "./blocks/blockEditor.js";
+import { PART_TOOLBOX, SCENE_TOOLBOX } from "./blocks/toolbox.js";
+import {
+  createEmptyProject,
+  loadProjectFromLocalStorage,
+  parseProject,
+  saveProjectToLocalStorage,
+  serializeProject,
+  ProjectFormatError,
+  type Project,
+  type ProjectPart,
+  type ProjectScene,
+} from "./project.js";
+import { buildProjectAssets, buildProjectSource, ProjectBuildError } from "./projectBuild.js";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#screen");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
 const reloadBtn = document.querySelector<HTMLButtonElement>("#reload-btn");
-const codeEditor = document.querySelector<HTMLTextAreaElement>("#code-editor");
 const buildBtn = document.querySelector<HTMLButtonElement>("#build-btn");
 const downloadBtn = document.querySelector<HTMLButtonElement>("#download-btn");
 const buildStatus = document.querySelector<HTMLSpanElement>("#build-status");
 const buildError = document.querySelector<HTMLPreElement>("#build-error");
+const buildSourcePreview = document.querySelector<HTMLTextAreaElement>("#build-source-preview");
 const cartTitleInput = document.querySelector<HTMLInputElement>("#cart-title");
 const cartAuthorInput = document.querySelector<HTMLInputElement>("#cart-author");
 const cartCanvas = document.querySelector<HTMLCanvasElement>("#cartridge-label-canvas");
@@ -36,11 +41,11 @@ if (
   !canvas ||
   !statusEl ||
   !reloadBtn ||
-  !codeEditor ||
   !buildBtn ||
   !downloadBtn ||
   !buildStatus ||
   !buildError ||
+  !buildSourcePreview ||
   !cartTitleInput ||
   !cartAuthorInput ||
   !cartCanvas ||
@@ -73,7 +78,7 @@ window.addEventListener("keydown", startAudioOnce, { once: true });
 
 function loadDemoRom(): void {
   nes.loadRom(buildSmokeRom());
-  statusEl!.textContent = "動作確認用ROM（emulator-core smoke test）を実行中";
+  statusEl!.textContent = "動作確認用ROM（emulator-core単体の疎通確認用）を実行中";
 }
 
 function fromBase64(b64: string): Uint8Array {
@@ -83,38 +88,344 @@ function fromBase64(b64: string): Uint8Array {
   return bytes;
 }
 
-// --- コードエディタ（JS風DSL） ---
-// タイル0番＝自機（キー操作）、タイル1番＝もう1体（自動で左右に動く）の2体を表示する。
-// 「複数のタイル番号を使えば複数のキャラクターを同時に出せる」ことに加え、
-// setSpritePalette()のスロット0と1で別の配色を用意し、drawSprite()の第5引数
-// （palette）で使い分ける＝実機同様「スプライトごとに配色を選べる」ことも示す。
-const SAMPLE_SOURCE = `let x = 120;
-let y = 100;
-let ex = 200;
-let ey = 50;
-let exGoingRight = 0;
-
-function init() {
-  setPalette(0, 1, 33, 0, 0);
-  setSpritePalette(0, 1, 34, 0, 0);
-  setSpritePalette(1, 1, 22, 0, 0);
+// --- デフォルトプロジェクト（初回起動時のサンプル） ---
+// タイル0番＝自機（キー操作）、タイル1番＝もう1体（自動で左右に往復）の2パーツ構成。
+// 「パーツにドット絵+振る舞いをセットで持たせ、シーンに配置する」という
+// プロジェクト式そのものをサンプルとして示す。
+function createDefaultProject(): Project {
+  const project = createEmptyProject();
+  project.title = "サンプル";
+  project.parts.push({
+    name: "Player",
+    tiles: [new Array(64).fill(0)],
+    code: [
+      "field x = 120;",
+      "field y = 100;",
+      "",
+      "behavior move(self) {",
+      "  if (btn.right) { self.x += 1; }",
+      "  if (btn.left) { self.x -= 1; }",
+      "  if (btn.up) { self.y -= 1; }",
+      "  if (btn.down) { self.y += 1; }",
+      "  if (btn.a_just_pressed) { playSound(Jump); }",
+      "  drawSprite(0, self.x, self.y, 0, 0);",
+      "}",
+    ].join("\n"),
+  });
+  project.parts.push({
+    name: "Mover",
+    tiles: [new Array(64).fill(0)],
+    code: [
+      "field x = 200;",
+      "field y = 50;",
+      "field goingRight = 0;",
+      "",
+      "behavior move(self) {",
+      "  if (self.goingRight) { self.x += 1; } else { self.x -= 1; }",
+      "  if (self.x > 240) { self.goingRight = 0; }",
+      "  if (self.x < 16) { self.goingRight = 1; }",
+      "  drawSprite(1, self.x, self.y, 0, 1);",
+      "}",
+    ].join("\n"),
+  });
+  project.scenes.push({
+    name: "Main",
+    code: [
+      "instance player: Player;",
+      "instance mover: Mover;",
+      "",
+      "function init() {",
+      "  setPalette(0, 1, 33, 0, 0);",
+      "  setSpritePalette(0, 1, 34, 0, 0);",
+      "  setSpritePalette(1, 1, 22, 0, 0);",
+      "}",
+      "",
+      "function update() {",
+      "  Player.move(player);",
+      "  Mover.move(mover);",
+      "}",
+    ].join("\n"),
+  });
+  project.sounds.push({ name: "Jump", channel: 0, note: 24, duration: 10 });
+  return project;
 }
 
-function update() {
-  if (btn.right) { x += 1; }
-  if (btn.left) { x -= 1; }
-  if (btn.up) { y -= 1; }
-  if (btn.down) { y += 1; }
-  if (btn.a_just_pressed) { playTone(0, 24, 10); }
+// --- プロジェクト（パーツ/シーン/サウンドの集まり）の状態管理 ---
+let project: Project = createDefaultProject();
+let currentPartIndex = -1;
+let currentSceneIndex = -1;
 
-  if (exGoingRight) { ex += 1; } else { ex -= 1; }
-  if (ex > 240) { exGoingRight = 0; }
-  if (ex < 16) { exGoingRight = 1; }
+const partSelect = document.querySelector<HTMLSelectElement>("#part-select");
+const partAddBtn = document.querySelector<HTMLButtonElement>("#part-add-btn");
+const partRenameBtn = document.querySelector<HTMLButtonElement>("#part-rename-btn");
+const partDeleteBtn = document.querySelector<HTMLButtonElement>("#part-delete-btn");
+const partEditorEl = document.querySelector<HTMLDivElement>("#part-editor");
+const partCodeEditor = document.querySelector<HTMLTextAreaElement>("#part-code-editor");
+const partBlockWorkspaceEl = document.querySelector<HTMLDivElement>("#part-block-workspace");
+const partBlocksBuildBtn = document.querySelector<HTMLButtonElement>("#part-blocks-build-btn");
+const partBlocksStatus = document.querySelector<HTMLSpanElement>("#part-blocks-status");
 
-  drawSprite(0, x, y, 0, 0);
-  drawSprite(1, ex, ey, 1, 1);
+const sceneSelect = document.querySelector<HTMLSelectElement>("#scene-select");
+const sceneAddBtn = document.querySelector<HTMLButtonElement>("#scene-add-btn");
+const sceneRenameBtn = document.querySelector<HTMLButtonElement>("#scene-rename-btn");
+const sceneDeleteBtn = document.querySelector<HTMLButtonElement>("#scene-delete-btn");
+const sceneEditorEl = document.querySelector<HTMLDivElement>("#scene-editor");
+const sceneCodeEditor = document.querySelector<HTMLTextAreaElement>("#scene-code-editor");
+const sceneBlockWorkspaceEl = document.querySelector<HTMLDivElement>("#scene-block-workspace");
+const sceneBlocksBuildBtn = document.querySelector<HTMLButtonElement>("#scene-blocks-build-btn");
+const sceneBlocksStatus = document.querySelector<HTMLSpanElement>("#scene-blocks-status");
+
+let partBlockWorkspace: Blockly.WorkspaceSvg | null = null;
+let sceneBlockWorkspace: Blockly.WorkspaceSvg | null = null;
+if (partBlockWorkspaceEl) partBlockWorkspace = initBlockEditor(partBlockWorkspaceEl, PART_TOOLBOX);
+if (sceneBlockWorkspaceEl) sceneBlockWorkspace = initBlockEditor(sceneBlockWorkspaceEl, SCENE_TOOLBOX);
+
+const VALID_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function promptForName(message: string, existing: string[], initial = ""): string | null {
+  const name = window.prompt(message, initial);
+  if (name === null) return null;
+  if (!VALID_NAME_RE.test(name)) {
+    window.alert("名前は英字またはアンダースコアで始まり、英数字とアンダースコアのみが使えます");
+    return null;
+  }
+  if (existing.includes(name)) {
+    window.alert(`「${name}」は既に使われています`);
+    return null;
+  }
+  return name;
 }
-`;
+
+/**
+ * ドット絵エディタは常に256枚固定のバッファを持つが、実機のCHR-ROMは全パーツ合計で
+ * 256枚（スプライト用パターンテーブル1枚分）しか入らない。ここで保存する際は
+ * 「実際に絵が描かれた最後のタイル」までに切り詰め、複数パーツを作っても
+ * すぐに枠を使い切ってしまわないようにする。
+ */
+function trimBlankTiles(allTiles: Uint8Array[]): number[][] {
+  let lastNonBlank = -1;
+  allTiles.forEach((t, i) => {
+    if (t.some((v) => v !== 0)) lastNonBlank = i;
+  });
+  const count = Math.max(lastNonBlank + 1, 1);
+  return allTiles.slice(0, count).map((t) => Array.from(t));
+}
+
+// --- パーツ: 現在編集中の内容をProjectへ書き戻す/選択を切り替える ---
+function syncCurrentPartFromEditors(): void {
+  if (currentPartIndex < 0) return;
+  const part = project.parts[currentPartIndex];
+  if (!part) return;
+  if (partCodeEditor) part.code = partCodeEditor.value;
+  part.tiles = trimBlankTiles(getTiles());
+  if (partBlockWorkspace) {
+    part.blocks = Blockly.serialization.workspaces.save(partBlockWorkspace);
+  }
+}
+
+function loadPartIntoEditors(part: ProjectPart): void {
+  if (partCodeEditor) partCodeEditor.value = part.code;
+  setTiles(part.tiles);
+  if (partBlockWorkspace) {
+    partBlockWorkspace.clear();
+    if (part.blocks) {
+      Blockly.serialization.workspaces.load(part.blocks as never, partBlockWorkspace);
+    }
+  }
+}
+
+function refreshPartSelect(): void {
+  if (!partSelect) return;
+  partSelect.innerHTML = "";
+  project.parts.forEach((p, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = p.name;
+    partSelect.appendChild(opt);
+  });
+  const hasParts = project.parts.length > 0;
+  if (partEditorEl) partEditorEl.hidden = !hasParts;
+  if (partRenameBtn) partRenameBtn.disabled = !hasParts;
+  if (partDeleteBtn) partDeleteBtn.disabled = !hasParts;
+}
+
+function selectPart(index: number): void {
+  syncCurrentPartFromEditors();
+  currentPartIndex = index;
+  if (partSelect) partSelect.value = String(index);
+  const part = project.parts[index];
+  if (part) loadPartIntoEditors(part);
+}
+
+partSelect?.addEventListener("change", () => {
+  const i = Number(partSelect.value);
+  if (!Number.isNaN(i)) selectPart(i);
+});
+
+partAddBtn?.addEventListener("click", () => {
+  const name = promptForName(
+    "新しいパーツの名前（例: Ball）",
+    project.parts.map((p) => p.name),
+  );
+  if (!name) return;
+  syncCurrentPartFromEditors();
+  project.parts.push({ name, tiles: [new Array(64).fill(0)], code: "" });
+  refreshPartSelect();
+  selectPart(project.parts.length - 1);
+});
+
+partRenameBtn?.addEventListener("click", () => {
+  if (currentPartIndex < 0) return;
+  const part = project.parts[currentPartIndex];
+  if (!part) return;
+  const name = promptForName(
+    "パーツの新しい名前",
+    project.parts.filter((_p, i) => i !== currentPartIndex).map((p) => p.name),
+    part.name,
+  );
+  if (!name) return;
+  part.name = name;
+  refreshPartSelect();
+  if (partSelect) partSelect.value = String(currentPartIndex);
+});
+
+partDeleteBtn?.addEventListener("click", () => {
+  if (currentPartIndex < 0) return;
+  const part = project.parts[currentPartIndex];
+  if (!part) return;
+  if (!window.confirm(`パーツ「${part.name}」を削除しますか？`)) return;
+  project.parts.splice(currentPartIndex, 1);
+  currentPartIndex = -1;
+  refreshPartSelect();
+  if (project.parts.length > 0) selectPart(0);
+});
+
+partBlocksBuildBtn?.addEventListener("click", () => {
+  if (!partBlockWorkspace || !partCodeEditor) return;
+  partCodeEditor.value = generatePartBody(partBlockWorkspace);
+  if (partBlocksStatus) partBlocksStatus.textContent = "コードを生成しました（「コード」タブで確認できます）";
+});
+
+// --- シーン: 現在編集中の内容をProjectへ書き戻す/選択を切り替える ---
+function syncCurrentSceneFromEditors(): void {
+  if (currentSceneIndex < 0) return;
+  const scene = project.scenes[currentSceneIndex];
+  if (!scene) return;
+  if (sceneCodeEditor) scene.code = sceneCodeEditor.value;
+  if (sceneBlockWorkspace) {
+    scene.blocks = Blockly.serialization.workspaces.save(sceneBlockWorkspace);
+  }
+}
+
+function loadSceneIntoEditors(scene: ProjectScene): void {
+  if (sceneCodeEditor) sceneCodeEditor.value = scene.code;
+  if (sceneBlockWorkspace) {
+    sceneBlockWorkspace.clear();
+    if (scene.blocks) {
+      Blockly.serialization.workspaces.load(scene.blocks as never, sceneBlockWorkspace);
+    }
+  }
+}
+
+function refreshSceneSelect(): void {
+  if (!sceneSelect) return;
+  sceneSelect.innerHTML = "";
+  project.scenes.forEach((s, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = s.name;
+    sceneSelect.appendChild(opt);
+  });
+  const hasScenes = project.scenes.length > 0;
+  if (sceneEditorEl) sceneEditorEl.hidden = !hasScenes;
+  if (sceneRenameBtn) sceneRenameBtn.disabled = !hasScenes;
+  if (sceneDeleteBtn) sceneDeleteBtn.disabled = !hasScenes;
+  // codegen.tsの制約（シーンはちょうど1つ）に合わせ、既に1つあれば追加を封じる
+  if (sceneAddBtn) sceneAddBtn.disabled = project.scenes.length >= 1;
+}
+
+function selectScene(index: number): void {
+  syncCurrentSceneFromEditors();
+  currentSceneIndex = index;
+  if (sceneSelect) sceneSelect.value = String(index);
+  const scene = project.scenes[index];
+  if (scene) loadSceneIntoEditors(scene);
+}
+
+sceneSelect?.addEventListener("change", () => {
+  const i = Number(sceneSelect.value);
+  if (!Number.isNaN(i)) selectScene(i);
+});
+
+sceneAddBtn?.addEventListener("click", () => {
+  if (project.scenes.length >= 1) {
+    window.alert("シーンは現在ちょうど1つまでしか使えません");
+    return;
+  }
+  const name = promptForName(
+    "新しいシーンの名前（例: Main）",
+    project.scenes.map((s) => s.name),
+    "Main",
+  );
+  if (!name) return;
+  syncCurrentSceneFromEditors();
+  project.scenes.push({ name, code: "function init() {}\nfunction update() {}\n" });
+  refreshSceneSelect();
+  selectScene(project.scenes.length - 1);
+});
+
+sceneRenameBtn?.addEventListener("click", () => {
+  if (currentSceneIndex < 0) return;
+  const scene = project.scenes[currentSceneIndex];
+  if (!scene) return;
+  const name = promptForName(
+    "シーンの新しい名前",
+    project.scenes.filter((_s, i) => i !== currentSceneIndex).map((s) => s.name),
+    scene.name,
+  );
+  if (!name) return;
+  scene.name = name;
+  refreshSceneSelect();
+  if (sceneSelect) sceneSelect.value = String(currentSceneIndex);
+});
+
+sceneDeleteBtn?.addEventListener("click", () => {
+  if (currentSceneIndex < 0) return;
+  const scene = project.scenes[currentSceneIndex];
+  if (!scene) return;
+  if (!window.confirm(`シーン「${scene.name}」を削除しますか？`)) return;
+  project.scenes.splice(currentSceneIndex, 1);
+  currentSceneIndex = -1;
+  refreshSceneSelect();
+  if (project.scenes.length > 0) selectScene(0);
+});
+
+sceneBlocksBuildBtn?.addEventListener("click", () => {
+  if (!sceneBlockWorkspace || !sceneCodeEditor) return;
+  sceneCodeEditor.value = generateSceneBody(sceneBlockWorkspace);
+  if (sceneBlocksStatus) sceneBlocksStatus.textContent = "コードを生成しました（「コード」タブで確認できます）";
+});
+
+// --- パーツ/シーン共通: コード⇔ブロックのサブタブ切り替え ---
+function wireSubtabs(panelSelector: string): void {
+  const panel = document.querySelector<HTMLDivElement>(panelSelector);
+  if (!panel) return;
+  const subtabButtons = panel.querySelectorAll<HTMLButtonElement>(".subtabs button[data-subtab]");
+  const subpanels = panel.querySelectorAll<HTMLDivElement>(".subpanel[data-subpanel]");
+  subtabButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const target = btn.dataset.subtab;
+      subtabButtons.forEach((b) => b.setAttribute("aria-selected", String(b === btn)));
+      subpanels.forEach((p) => p.classList.toggle("active", p.dataset.subpanel === target));
+      if (target === "blocks") {
+        if (panelSelector.includes("parts") && partBlockWorkspace) Blockly.svgResize(partBlockWorkspace);
+        if (panelSelector.includes("scenes") && sceneBlockWorkspace) Blockly.svgResize(sceneBlockWorkspace);
+      }
+    });
+  });
+}
+wireSubtabs('[data-panel="parts"]');
+wireSubtabs('[data-panel="scenes"]');
 
 let lastBuiltRom: Uint8Array | null = null;
 
@@ -126,23 +437,25 @@ function refreshCartridgeLabel(): void {
 }
 
 function buildAndRun(): void {
+  syncCurrentPartFromEditors();
+  syncCurrentSceneFromEditors();
+
   buildError!.hidden = true;
   buildError!.textContent = "";
   try {
-    const { prgRom } = compile(codeEditor!.value);
-    const chrRom = packChrRom(getTiles());
-    const rom = packINesRom(prgRom, chrRom);
+    const source = buildProjectSource(project);
+    buildSourcePreview!.value = source;
+    const assets = buildProjectAssets(project);
+    const { rom } = compile(source, assets);
     nes.loadRom(rom);
     lastBuiltRom = rom;
     downloadBtn!.disabled = false;
     standaloneExportBtn!.disabled = false;
-    statusEl!.textContent = "コードエディタのDSLコード + ドット絵エディタのCHRをコンパイルして実行中";
+    statusEl!.textContent = "「パーツ」「シーン」タブで組み立てたプロジェクトをコンパイルして実行中";
     buildStatus!.textContent = "ビルド成功";
     refreshCartridgeLabel();
 
-    // ビルド成功のたびにプロジェクト（コード+ドット絵）をlocalStorageへ自動保存する
-    // （Phase 5: これまで存在しなかった「プロジェクトの保存」を、ページ再読み込みをまたいで実現する）。
-    const project = createProject(codeEditor!.value, getTiles());
+    // ビルド成功のたびにプロジェクト（パーツ/シーン/サウンド）をlocalStorageへ自動保存する。
     project.title = cartTitleInput!.value;
     project.author = cartAuthorInput!.value;
     saveProjectToLocalStorage(project);
@@ -169,7 +482,7 @@ refreshCartridgeLabel();
 standaloneExportBtn.addEventListener("click", () => {
   if (!lastBuiltRom) return;
   standaloneExportStatus!.textContent = "書き出し中...";
-  exportStandaloneHtml(lastBuiltRom, codeEditor!.value, `${cartTitleInput!.value || "game"}.html`)
+  exportStandaloneHtml(lastBuiltRom, buildProjectSource(project), `${cartTitleInput!.value || "game"}.html`)
     .then(() => {
       standaloneExportStatus!.textContent = "書き出し完了";
     })
@@ -179,19 +492,20 @@ standaloneExportBtn.addEventListener("click", () => {
     });
 });
 
-// --- 起動時: スタンドアロン書き出し版として開かれた場合、埋め込みROM/ソースを読み込む ---
+// --- 起動時: プロジェクトの読み込み ---
+// 優先順位: (1) スタンドアロン書き出し版として開かれた場合の埋め込みROM
+//           (2) localStorageに保存された前回のプロジェクト
+//           (3) 組み込みのデフォルトプロジェクト（サンプル）
 interface EmbeddedData {
   rom: string | null;
   source: string | null;
 }
 const embeddedDataEl = document.querySelector<HTMLScriptElement>("#embedded-data");
 let embeddedRomB64: string | null = null;
-let embeddedSource: string | null = null;
 if (embeddedDataEl?.textContent) {
   try {
     const parsed = JSON.parse(embeddedDataEl.textContent) as EmbeddedData;
     embeddedRomB64 = parsed.rom;
-    embeddedSource = parsed.source;
   } catch {
     // 埋め込みデータが壊れている場合は通常起動にフォールバック
   }
@@ -201,33 +515,36 @@ if (embeddedRomB64) {
   const rom = fromBase64(embeddedRomB64);
   nes.loadRom(rom);
   lastBuiltRom = rom;
-  codeEditor.value = embeddedSource ?? SAMPLE_SOURCE;
   downloadBtn.disabled = false;
   standaloneExportBtn.disabled = false;
   statusEl.textContent = "配布用HTMLに同梱されたROMを実行中";
 } else {
-  // 埋め込みデータが無い通常起動時は、前回ビルド時に自動保存されたプロジェクトがあれば復元する。
   const savedProject = loadProjectFromLocalStorage();
-  if (savedProject) {
-    codeEditor.value = savedProject.code;
-    setTiles(savedProject.tiles);
-    if (savedProject.title) cartTitleInput.value = savedProject.title;
-    if (savedProject.author) cartAuthorInput.value = savedProject.author;
+  if (savedProject) project = savedProject;
+  if (project.title) cartTitleInput.value = project.title;
+  if (project.author) cartAuthorInput.value = project.author;
+}
+refreshPartSelect();
+refreshSceneSelect();
+if (project.parts.length > 0) selectPart(0);
+if (project.scenes.length > 0) selectScene(0);
+if (!embeddedRomB64) {
+  if (project.parts.length > 0 || project.scenes.length > 0) {
     buildAndRun();
   } else {
-    codeEditor.value = SAMPLE_SOURCE;
     loadDemoRom();
   }
 }
 reloadBtn.addEventListener("click", loadDemoRom);
 
-// --- プロジェクトのエクスポート/インポート（JSON、Phase 5） ---
+// --- プロジェクトのエクスポート/インポート（JSON） ---
 const projectExportBtn = document.querySelector<HTMLButtonElement>("#project-export-btn");
 const projectImportInput = document.querySelector<HTMLInputElement>("#project-import-input");
 const projectIoStatus = document.querySelector<HTMLSpanElement>("#project-io-status");
 
 projectExportBtn?.addEventListener("click", () => {
-  const project = createProject(codeEditor!.value, getTiles());
+  syncCurrentPartFromEditors();
+  syncCurrentSceneFromEditors();
   project.title = cartTitleInput!.value;
   project.author = cartAuthorInput!.value;
   const blob = new Blob([serializeProject(project)], { type: "application/json" });
@@ -251,16 +568,21 @@ projectImportInput?.addEventListener("change", () => {
   file
     .text()
     .then((text) => {
-      const project = parseProject(text);
-      codeEditor.value = project.code;
-      setTiles(project.tiles);
+      project = parseProject(text);
+      currentPartIndex = -1;
+      currentSceneIndex = -1;
       if (project.title) cartTitleInput.value = project.title;
       if (project.author) cartAuthorInput.value = project.author;
+      refreshPartSelect();
+      refreshSceneSelect();
+      if (project.parts.length > 0) selectPart(0);
+      if (project.scenes.length > 0) selectScene(0);
       buildAndRun();
       projectIoStatus.textContent = `「${file.name}」を読み込みました`;
     })
     .catch((err: unknown) => {
-      const message = err instanceof ProjectFormatError ? err.message : err instanceof Error ? err.message : String(err);
+      const message =
+        err instanceof ProjectFormatError ? err.message : err instanceof Error ? err.message : String(err);
       projectIoStatus.textContent = `読み込み失敗: ${message}`;
     });
 });
@@ -324,10 +646,15 @@ function frame(): void {
 }
 requestAnimationFrame(frame);
 
-// --- 音源タブ: 試聴（playToneのその場再生） ---
+// --- 音源タブ: 試聴 + 名前付きサウンドアセットの保存 ---
 const toneChannelSelect = document.querySelector<HTMLSelectElement>("#tone-channel");
 const toneNoteSelect = document.querySelector<HTMLSelectElement>("#tone-note");
+const toneDurationInput = document.querySelector<HTMLInputElement>("#tone-duration");
 const tonePlayBtn = document.querySelector<HTMLButtonElement>("#tone-play-btn");
+const soundNameInput = document.querySelector<HTMLInputElement>("#sound-name-input");
+const soundSaveBtn = document.querySelector<HTMLButtonElement>("#sound-save-btn");
+const soundSaveStatus = document.querySelector<HTMLSpanElement>("#sound-save-status");
+const soundListEl = document.querySelector<HTMLUListElement>("#sound-list");
 
 function refreshToneNoteOptions(): void {
   if (!toneChannelSelect || !toneNoteSelect) return;
@@ -345,6 +672,41 @@ function refreshToneNoteOptions(): void {
   if (Number(previousValue) < count) toneNoteSelect.value = previousValue;
 }
 
+function refreshSoundList(): void {
+  if (!soundListEl) return;
+  soundListEl.innerHTML = "";
+  project.sounds.forEach((sound, i) => {
+    const li = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = `${sound.name} (ch${sound.channel}, note${sound.note}, ${sound.duration}f)`;
+    li.appendChild(label);
+
+    const loadBtn = document.createElement("button");
+    loadBtn.type = "button";
+    loadBtn.textContent = "編集/試聴";
+    loadBtn.addEventListener("click", () => {
+      if (toneChannelSelect) toneChannelSelect.value = String(sound.channel);
+      refreshToneNoteOptions();
+      if (toneNoteSelect) toneNoteSelect.value = String(sound.note);
+      if (toneDurationInput) toneDurationInput.value = String(sound.duration);
+      if (soundNameInput) soundNameInput.value = sound.name;
+    });
+    li.appendChild(loadBtn);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "削除";
+    deleteBtn.addEventListener("click", () => {
+      project.sounds.splice(i, 1);
+      refreshSoundList();
+    });
+    li.appendChild(deleteBtn);
+
+    soundListEl.appendChild(li);
+  });
+}
+refreshSoundList();
+
 if (toneChannelSelect && toneNoteSelect && tonePlayBtn) {
   refreshToneNoteOptions();
   toneChannelSelect.addEventListener("change", refreshToneNoteOptions);
@@ -352,9 +714,30 @@ if (toneChannelSelect && toneNoteSelect && tonePlayBtn) {
     startAudioOnce();
     const channel = Number(toneChannelSelect.value) as 0 | 1 | 2 | 3;
     const noteIndex = Number(toneNoteSelect.value);
-    audio.previewTone(channel, noteIndex, 20);
+    const duration = Number(toneDurationInput?.value) || 20;
+    audio.previewTone(channel, noteIndex, duration);
   });
 }
+
+soundSaveBtn?.addEventListener("click", () => {
+  if (!toneChannelSelect || !toneNoteSelect || !soundNameInput || !soundSaveStatus) return;
+  const name = soundNameInput.value.trim();
+  if (!VALID_NAME_RE.test(name)) {
+    soundSaveStatus.textContent = "名前は英字/アンダースコアで始まる英数字にしてください";
+    return;
+  }
+  const channel = Number(toneChannelSelect.value) as 0 | 1 | 2 | 3;
+  const note = Number(toneNoteSelect.value);
+  const duration = Number(toneDurationInput?.value) || 20;
+  const existingIndex = project.sounds.findIndex((s) => s.name === name);
+  if (existingIndex >= 0) {
+    project.sounds[existingIndex] = { name, channel, note, duration };
+  } else {
+    project.sounds.push({ name, channel, note, duration });
+  }
+  refreshSoundList();
+  soundSaveStatus.textContent = `「${name}」を保存しました。コードから playSound(${name}) で呼び出せます`;
+});
 
 // --- 入力（キーボード/仮想パッド共通）。ネットプレイのゲストモード時は
 //     ローカルのcontroller1ではなくWebRTC経由でホストへ送る（M8）。 ---
@@ -418,30 +801,6 @@ padButtons.forEach((el) => {
   el.addEventListener("pointercancel", press(false));
 });
 
-// --- ブロックエディタ（Scratch風、docs/03_DSL_SPEC.mdのDSLをブロック化） ---
-const blockWorkspaceEl = document.querySelector<HTMLDivElement>("#block-workspace");
-const blocksBuildBtn = document.querySelector<HTMLButtonElement>("#blocks-build-btn");
-const blocksResetBtn = document.querySelector<HTMLButtonElement>("#blocks-reset-btn");
-const blocksBuildStatus = document.querySelector<HTMLSpanElement>("#blocks-build-status");
-
-let blockWorkspace: Blockly.WorkspaceSvg | null = null;
-if (blockWorkspaceEl && blocksBuildBtn && blocksResetBtn && blocksBuildStatus) {
-  blockWorkspace = initBlockEditor(blockWorkspaceEl);
-  loadDefaultWorkspace(blockWorkspace);
-
-  blocksBuildBtn.addEventListener("click", () => {
-    if (!blockWorkspace) return;
-    const source = generateSource(blockWorkspace);
-    codeEditor.value = source;
-    buildAndRun();
-    blocksBuildStatus.textContent = buildStatus.textContent;
-  });
-
-  blocksResetBtn.addEventListener("click", () => {
-    if (blockWorkspace) loadDefaultWorkspace(blockWorkspace);
-  });
-}
-
 // --- タブ切り替え ---
 const tabButtons = document.querySelectorAll<HTMLButtonElement>(".tabs button[data-tab]");
 const panels = document.querySelectorAll<HTMLDivElement>(".panel[data-panel]");
@@ -451,9 +810,8 @@ tabButtons.forEach((btn) => {
     const target = btn.dataset.tab;
     tabButtons.forEach((b) => b.setAttribute("aria-selected", String(b === btn)));
     panels.forEach((p) => p.classList.toggle("active", p.dataset.panel === target));
-    if (target === "blocks" && blockWorkspace) {
-      Blockly.svgResize(blockWorkspace);
-    }
+    if (target === "parts" && partBlockWorkspace) Blockly.svgResize(partBlockWorkspace);
+    if (target === "scenes" && sceneBlockWorkspace) Blockly.svgResize(sceneBlockWorkspace);
   });
 });
 

@@ -2,15 +2,18 @@ import * as Blockly from "blockly/core";
 import "blockly/blocks";
 import * as Ja from "blockly/msg/ja";
 import { defineFamiJsBlocks } from "./definitions.js";
-import { generateSource } from "./generator.js";
+import { generatePartBody, generateSceneBody, generateSource } from "./generator.js";
 import { FAMIJS_TOOLBOX } from "./toolbox.js";
 
 Blockly.setLocale(Ja as unknown as { [key: string]: string });
 defineFamiJsBlocks();
 
-export function initBlockEditor(container: HTMLElement): Blockly.WorkspaceSvg {
+export function initBlockEditor(
+  container: HTMLElement,
+  toolbox: Blockly.utils.toolbox.ToolboxDefinition = FAMIJS_TOOLBOX,
+): Blockly.WorkspaceSvg {
   const workspace = Blockly.inject(container, {
-    toolbox: FAMIJS_TOOLBOX,
+    toolbox,
     trashcan: true,
     zoom: { controls: true, wheel: true, startScale: 0.85 },
   });
@@ -182,4 +185,4 @@ export function loadDefaultWorkspace(workspace: Blockly.WorkspaceSvg): void {
   updateEvent.getInput("DO")!.connection!.connect(ifRight.previousConnection!);
 }
 
-export { generateSource };
+export { generateSource, generatePartBody, generateSceneBody };

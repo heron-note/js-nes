@@ -93,3 +93,117 @@ export const FAMIJS_TOOLBOX = {
     },
   ],
 };
+
+/**
+ * パーツ専用ワークスペース用のツールボックス（Phase 6）。
+ * ワークスペース自体が「1つのpart本体」を表すため、fjs_part_decl等の外枠ブロックは含めない。
+ */
+export const PART_TOOLBOX = {
+  kind: "categoryToolbox",
+  contents: [
+    {
+      kind: "category",
+      name: "フィールド/振る舞い",
+      colour: "290",
+      contents: [
+        { kind: "block", type: "fjs_field_decl" },
+        { kind: "block", type: "fjs_behavior_decl" },
+        { kind: "block", type: "fjs_self_field_get" },
+        { kind: "block", type: "fjs_self_field_set" },
+        { kind: "block", type: "fjs_self_field_add" },
+        { kind: "block", type: "fjs_self_field_sub" },
+      ],
+    },
+    {
+      kind: "category",
+      name: "条件分岐",
+      colour: "260",
+      contents: [{ kind: "block", type: "fjs_if" }],
+    },
+    {
+      kind: "category",
+      name: "条件（if の中に入れる）",
+      colour: "20",
+      contents: [
+        { kind: "block", type: "fjs_btn" },
+        { kind: "block", type: "fjs_var_truthy" },
+      ],
+    },
+    {
+      kind: "category",
+      name: "画面・音",
+      colour: "160",
+      contents: [
+        { kind: "block", type: "fjs_call_setpalette" },
+        { kind: "block", type: "fjs_call_setspritepalette" },
+        { kind: "block", type: "fjs_call_drawsprite" },
+        { kind: "block", type: "fjs_call_playtone" },
+      ],
+    },
+    {
+      kind: "category",
+      name: "値",
+      colour: "0",
+      contents: [
+        { kind: "block", type: "fjs_number" },
+        { kind: "block", type: "fjs_compare_expr" },
+      ],
+    },
+  ],
+};
+
+/**
+ * シーン専用ワークスペース用のツールボックス（Phase 6）。
+ * ワークスペース自体が「1つのscene本体」を表すため、fjs_scene_decl等の外枠ブロックは含めない。
+ */
+export const SCENE_TOOLBOX = {
+  kind: "categoryToolbox",
+  contents: [
+    {
+      kind: "category",
+      name: "配置/進行",
+      colour: "130",
+      contents: [
+        { kind: "block", type: "fjs_instance_decl" },
+        { kind: "block", type: "fjs_scene_event_init" },
+        { kind: "block", type: "fjs_scene_event_update" },
+        { kind: "block", type: "fjs_call_behavior" },
+        { kind: "block", type: "fjs_instance_field_get" },
+        { kind: "block", type: "fjs_instance_field_set" },
+        { kind: "block", type: "fjs_instance_field_add" },
+        { kind: "block", type: "fjs_instance_field_sub" },
+      ],
+    },
+    {
+      kind: "category",
+      name: "条件分岐",
+      colour: "260",
+      contents: [{ kind: "block", type: "fjs_if" }],
+    },
+    {
+      kind: "category",
+      name: "条件（if の中に入れる）",
+      colour: "20",
+      contents: [{ kind: "block", type: "fjs_btn" }],
+    },
+    {
+      kind: "category",
+      name: "画面・音",
+      colour: "160",
+      contents: [
+        { kind: "block", type: "fjs_call_setpalette" },
+        { kind: "block", type: "fjs_call_setspritepalette" },
+        { kind: "block", type: "fjs_call_playtone" },
+      ],
+    },
+    {
+      kind: "category",
+      name: "値",
+      colour: "0",
+      contents: [
+        { kind: "block", type: "fjs_number" },
+        { kind: "block", type: "fjs_compare_expr" },
+      ],
+    },
+  ],
+};
