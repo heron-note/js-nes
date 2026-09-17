@@ -1,5 +1,17 @@
 import { parse } from "./parser.js";
 import { generate } from "./codegen.js";
+import { packChrRom } from "@js-nes/rom-builder";
+
+export interface CompileAssets {
+  /**
+   * パーツ種別名 -> そのパーツが使うタイル配列（Phase 3: 資産リンク）。
+   * 各タイルは8x8=64ピクセル（値0-3）で、`program.parts`の宣言順・配列内の宣言順で
+   * 1本のCHR-ROMへ連結される。パーツの作者は自分のタイルシート内での0起点の番号
+   * （drawSpriteのtile引数）だけを意識すればよく、他パーツとの重複や全体でのオフセットを
+   * 気にする必要はない。
+   */
+  partTiles?: Record<string, ArrayLike<number>[]>;
+}
 
 export interface CompileResult {
   /** 完成した .nes ファイルのバイト列（Mapper 0 固定） */
@@ -11,20 +23,31 @@ export interface CompileResult {
 /**
  * JS風DSLソースコードを .nes バイナリにコンパイルする。
  *
- * 注意（M2時点の暫定仕様）: CHR-ROM統合（ドット絵エディタで描いたタイルの埋め込み）は
- * M3 の rom-builder / アセットエディタ実装後に対応する。現状はCHR-ROMを空（8KB, 全0）の
- * プレースホルダーとして出力し、PRG-ROM側（DSLからのロジック生成）の検証を主目的とする。
+ * `assets.partTiles` を渡さない場合（v0時代の呼び出し方と同一）、CHR-ROMは空（8KB, 全0）の
+ * プレースホルダーとして出力される（PRG-ROM側の検証のみが目的の場合の簡便な使い方）。
  */
-export function compile(source: string): CompileResult {
+export function compile(source: string, assets: CompileAssets = {}): CompileResult {
   const program = parse(source);
-  const prgRom = generate(program);
 
-  const chrRom = new Uint8Array(0x2000);
+  const tileOffsets = new Map<string, number>();
+  const tiles: ArrayLike<number>[] = [];
+  if (assets.partTiles) {
+    for (const part of program.parts) {
+      const partTiles = assets.partTiles[part.name];
+      if (!partTiles || partTiles.length === 0) continue;
+      tileOffsets.set(part.name, tiles.length);
+      tiles.push(...partTiles);
+    }
+  }
+
+  const prgRom = generate(program, { tileOffsets });
+
+  const chrRom = tiles.length > 0 ? packChrRom(tiles) : new Uint8Array(0x2000);
 
   const header = new Uint8Array(16);
   header.set([0x4e, 0x45, 0x53, 0x1a], 0); // "NES\x1A"
   header[4] = 1; // PRG-ROM: 16KB x1
-  header[5] = 1; // CHR-ROM: 8KB x1（プレースホルダー）
+  header[5] = 1; // CHR-ROM: 8KB x1
   header[6] = 0; // horizontal mirroring, mapper 0
   header[7] = 0;
 

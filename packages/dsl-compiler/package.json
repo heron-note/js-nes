@@ -11,7 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@js-nes/emulator-core": "*"
+    "@js-nes/emulator-core": "*",
+    "@js-nes/rom-builder": "*"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",

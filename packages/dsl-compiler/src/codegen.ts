@@ -82,7 +82,18 @@ const BUILTINS: Record<string, BuiltinDef> = {
 
 export class CodegenError extends Error {}
 
-export function generate(program: Program): Uint8Array {
+export interface GenerateOptions {
+  /**
+   * パーツ種別ごとのタイル番号オフセット（Phase 3: 資産リンク）。
+   * behavior本体内の drawSprite(...) 呼び出しで、tile引数が数値リテラルの場合のみ、
+   * そのパーツ種別の連結後CHR-ROM上の開始位置を自動加算する。これにより各パーツの
+   * ドット絵作者は自分のタイルシート内でのローカルな0起点の番号だけを意識すればよい。
+   */
+  tileOffsets?: ReadonlyMap<string, number>;
+}
+
+export function generate(program: Program, options: GenerateOptions = {}): Uint8Array {
+  const { tileOffsets } = options;
   const isV1 = program.parts.length > 0 || program.scenes.length > 0;
 
   if (isV1) {
@@ -306,7 +317,21 @@ export function generate(program: Program): Uint8Array {
       );
     }
     call.args.forEach((arg, i) => {
-      loadPartValueIntoA(arg, ctx, call.line);
+      // drawSprite(id, x, y, tile, palette) の tile(index=3) が数値リテラルの場合のみ、
+      // behavior内であればそのパーツ種別のタイルオフセットを自動加算する（Phase 3: 資産リンク）。
+      const isDrawSpriteTileArg = call.callee === "drawSprite" && i === 3;
+      if (isDrawSpriteTileArg && arg.kind === "num" && ctx.selfPartType && tileOffsets) {
+        const offset = tileOffsets.get(ctx.selfPartType) ?? 0;
+        const tile = arg.value + offset;
+        if (tile > 0xff) {
+          throw new CodegenError(
+            `${call.line}行目: パーツ '${ctx.selfPartType}' のタイル番号がCHR-ROMの範囲(0-255)を超えました（計算値: ${tile}）`,
+          );
+        }
+        e.LDA_IMM(tile);
+      } else {
+        loadPartValueIntoA(arg, ctx, call.line);
+      }
       e.STA_ZP(ARG_BASE + i);
     });
     e.JSR(def.label);
