@@ -464,6 +464,12 @@ export class Apu {
   private outputSampleRate = 44100;
   private sampleCycleAccumulator = 0;
   private readonly sampleBuffer: number[] = [];
+  // 出力サンプル間で経過した全CPUサイクルぶんの合成値を平均する簡易アンチエイリアシング
+  // （ボックスフィルタ）。単純に「出力する瞬間の1サイクルだけを点サンプリング」すると、
+  // 高音域のパルス波やノイズ波形はCPUサイクル間隔(1.79MHz)で何度も0/1が切り替わるため、
+  // 44.1kHzへ間引く際に高調波が折り返してザラついたノイズ的な音になる（エイリアシング）。
+  private sampleAccum = 0;
+  private sampleAccumCount = 0;
 
   constructor(readMemory: (addr: number) => number = () => 0) {
     this.dmc = new DmcUnit(readMemory);
@@ -504,6 +510,8 @@ export class Apu {
     this.cpuCycleCounter = 0;
     this.sampleCycleAccumulator = 0;
     this.sampleBuffer.length = 0;
+    this.sampleAccum = 0;
+    this.sampleAccumCount = 0;
   }
 
   cpuWrite(addr: number, value: number): void {
@@ -595,13 +603,22 @@ export class Apu {
     }
     this.clockFrameSequencer();
 
+    // 今回のCPUサイクルの合成値をアンチエイリアシング用に積算しておく。
+    this.sampleAccum += this.getMixedSample();
+    this.sampleAccumCount++;
+
     // CPUクロック(1789773Hz)を出力サンプルレートへダウンサンプリングする。
     // 誤差を蓄積し、CPU_CLOCK_NTSC分溜まるたびに1サンプル出力することで、
-    // 割り切れない比率でも長期的に正しい平均レートになる。
+    // 割り切れない比率でも長期的に正しい平均レートになる。出力するサンプル自体は
+    // その瞬間の1点だけでなく、直前の出力からの全CPUサイクル分の平均値
+    // （ボックスフィルタ）にすることで、点サンプリングによる高調波の折り返し
+    // （エイリアシング＝ザラついたノイズ的な音）を抑える。
     this.sampleCycleAccumulator += this.outputSampleRate;
     if (this.sampleCycleAccumulator >= CPU_CLOCK_NTSC) {
       this.sampleCycleAccumulator -= CPU_CLOCK_NTSC;
-      this.sampleBuffer.push(this.getMixedSample());
+      this.sampleBuffer.push(this.sampleAccum / this.sampleAccumCount);
+      this.sampleAccum = 0;
+      this.sampleAccumCount = 0;
     }
   }
 
