@@ -69,10 +69,12 @@ export function transferVertical(v: number, t: number): number {
  * Ricoh 2C02 (PPU) の実装。
  * 背景とスプライト（8x8固定・1ライン8枚制限・スプライト0ヒット対応）を描画する。
  * スクロールは実機同様のloopy v/t/x/wレジスタ（上記の`increment*`/`transfer*`参照）で管理する。
- * Phase 1時点では、水平/垂直コピーとYインクリメントをスキャンライン境界でまとめて適用する
- * 暫定近似（背景はスキャンライン単位のバッチ描画のまま）。真のドット単位の
- * フェッチ/シフトレジスタパイプラインはPhase 2で導入予定
- * （PPUのドット精度化プロジェクト、C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md）。
+ * 背景はPhase 2で導入した真のドット単位フェッチ/シフトレジスタパイプライン
+ * （`bgFetchStep`/`shiftBackgroundRegisters`/`sampleBackgroundPixel`）で描画するため、
+ * フレーム内で`$2005`/`$2006`をミッドスキャンラインで書き換えれば即座に以降のピクセルへ
+ * 反映される（ステータスバー分割等のラスタートリックに対応）。スプライトは引き続き
+ * スキャンライン単位のバッチ合成（`compositeSpritesRow`、Phase 3で対応予定）。
+ * PPUのドット精度化プロジェクト: C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md
  */
 export class Ppu2C02 {
   ctrl = 0;
@@ -91,6 +93,21 @@ export class Ppu2C02 {
   private t = 0;
   private fineX = 0;
   private dataBuffer = 0;
+
+  // --- 背景フェッチ/シフトレジスタパイプライン（Phase 2） ---
+  private ntLatch = 0;
+  private atLatch = 0;
+  private ptLowLatch = 0;
+  private ptHighLatch = 0;
+  private nextPaletteBits = 0;
+  private bgPatternLoShift = 0;
+  private bgPatternHiShift = 0;
+  private bgAttribLoShift = 0;
+  private bgAttribHiShift = 0;
+  // このスキャンライン分の背景ピクセル生値/パレット解決済み色（ドット単位で埋めていき、
+  // スキャンライン末尾でスプライト合成・framebuffer書き込みに使う）。
+  private readonly rowBgPixelValue = new Uint8Array(256);
+  private readonly rowColorIndex = new Uint8Array(256);
 
   scanline = -1;
   cycle = 0;
@@ -115,6 +132,17 @@ export class Ppu2C02 {
     this.t = 0;
     this.fineX = 0;
     this.dataBuffer = 0;
+    this.ntLatch = 0;
+    this.atLatch = 0;
+    this.ptLowLatch = 0;
+    this.ptHighLatch = 0;
+    this.nextPaletteBits = 0;
+    this.bgPatternLoShift = 0;
+    this.bgPatternHiShift = 0;
+    this.bgAttribLoShift = 0;
+    this.bgAttribHiShift = 0;
+    this.rowBgPixelValue.fill(0);
+    this.rowColorIndex.fill(0);
     this.scanline = -1;
     this.cycle = 0;
     this.frameComplete = false;
@@ -260,26 +288,44 @@ export class Ppu2C02 {
     this.paletteRam[pi] = value & 0x3f;
   }
 
-  /** PPUを1ドット分進める。 */
+  /**
+   * PPUを1ドット分進める。背景は真のドット単位フェッチ/シフトレジスタパイプライン
+   * （dot 1-256・321-336でのNT/AT/パターンバイトフェッチ、毎dotのシフト、dot 1-256での
+   * 1ピクセルずつのサンプリング）で描画するため、フレーム内で`$2005`/`$2006`/`$2000`を
+   * ミッドスキャンラインで書き換えれば、以降のdotのフェッチ・サンプルへ即座に反映される。
+   * スプライトは引き続きスキャンライン単位のバッチ合成（Phase 3で対応予定）。
+   */
   tickOne(): void {
     const renderingEnabled = (this.mask & 0x18) !== 0;
+    const bgEnabled = (this.mask & 0x08) !== 0;
+    const spritesEnabled = (this.mask & 0x10) !== 0;
     const isRenderingLine = (this.scanline >= 0 && this.scanline < 240) || this.scanline === -1;
+    const isVisibleLine = this.scanline >= 0 && this.scanline < 240;
+    const inFetchWindow = (this.cycle >= 1 && this.cycle <= 256) || (this.cycle >= 321 && this.cycle <= 336);
 
-    if (this.scanline >= 0 && this.scanline < 240 && this.cycle === 1) {
-      this.renderScanline(this.scanline);
-      this.bus.notifyScanline?.(renderingEnabled);
+    // サンプリングは常にシフト/フェッチより先（このdotのシフトレジスタが「まだシフトされて
+    // いない」状態を使う）。
+    if (isVisibleLine && this.cycle >= 1 && this.cycle <= 256) {
+      this.sampleBackgroundPixel(this.cycle - 1, bgEnabled);
     }
-    // 実機のdot256(Yインクリメント)/dot257(水平コピー)/pre-renderのdot280-304(垂直コピー)を、
-    // Phase 1時点ではスキャンライン単位のバッチ描画に合わせて「そのスキャンラインの処理直後」に
-    // まとめて適用する暫定近似（真のドット精度の適用タイミングはPhase 2で導入）。
-    if (isRenderingLine && this.cycle === 1 && renderingEnabled) {
-      if (this.scanline >= 0 && this.scanline < 240) {
-        this.v = incrementY(this.v);
+
+    if (isRenderingLine && renderingEnabled && inFetchWindow) {
+      this.bgFetchStep();
+      this.shiftBackgroundRegisters();
+      if (this.cycle % 8 === 0) {
+        this.reloadBgShiftRegisters();
+        this.v = incrementCoarseX(this.v);
       }
-      this.v = transferHorizontal(this.v, this.t);
-      if (this.scanline === -1) {
-        this.v = transferVertical(this.v, this.t);
-      }
+    }
+    if (isRenderingLine && renderingEnabled) {
+      if (this.cycle === 256) this.v = incrementY(this.v);
+      if (this.cycle === 257) this.v = transferHorizontal(this.v, this.t);
+      if (this.scanline === -1 && this.cycle === 280) this.v = transferVertical(this.v, this.t);
+    }
+
+    if (isVisibleLine && this.cycle === 256) {
+      this.finishScanline(this.scanline, spritesEnabled);
+      this.bus.notifyScanline?.(renderingEnabled);
     }
     if (this.scanline === 241 && this.cycle === 1) {
       this.status |= 0x80;
@@ -302,74 +348,72 @@ export class Ppu2C02 {
     }
   }
 
-  private renderScanline(y: number): void {
-    const bgEnabled = (this.mask & 0x08) !== 0;
-    const spritesEnabled = (this.mask & 0x10) !== 0;
-    const backdrop = (this.paletteRam[0] ?? 0) & 0x3f;
-
-    // bgPixelValue: そのピクセルの背景パターン生値(0=透明/backdrop, 1-3=不透明)。スプライトの優先度判定に使う。
-    const bgPixelValue = new Uint8Array(256);
-    const colorIndex = new Uint8Array(256).fill(backdrop);
-
-    if (bgEnabled) {
-      this.computeBackgroundRow(bgPixelValue, colorIndex);
-    }
-    if (spritesEnabled) {
-      this.compositeSpritesRow(y, bgPixelValue, colorIndex);
-    }
-
-    for (let x = 0; x < 256; x++) {
-      const rgb = NES_PALETTE[(colorIndex[x] ?? backdrop) & 0x3f] ?? 0;
-      this.setPixel(x, y, rgb);
+  /** dot%8===1,3,5,7でNT/AT/パターン下位/パターン上位バイトを順にフェッチしラッチする。 */
+  private bgFetchStep(): void {
+    const phase = this.cycle % 8;
+    if (phase === 1) {
+      this.ntLatch = this.ppuMemRead(0x2000 | (this.v & 0x0fff));
+    } else if (phase === 3) {
+      const attrAddr = 0x23c0 | (this.v & 0x0c00) | ((this.v >> 4) & 0x38) | ((this.v >> 2) & 0x07);
+      this.atLatch = this.ppuMemRead(attrAddr);
+      const shift = ((this.v >> 4) & 4) | (this.v & 2);
+      this.nextPaletteBits = (this.atLatch >> shift) & 0x03;
+    } else if (phase === 5) {
+      const bgPatternBase = this.ctrl & 0x10 ? 0x1000 : 0x0000;
+      const fineY = (this.v >> 12) & 0x07;
+      this.ptLowLatch = this.ppuMemRead(bgPatternBase + this.ntLatch * 16 + fineY);
+    } else if (phase === 7) {
+      const bgPatternBase = this.ctrl & 0x10 ? 0x1000 : 0x0000;
+      const fineY = (this.v >> 12) & 0x07;
+      this.ptHighLatch = this.ppuMemRead(bgPatternBase + this.ntLatch * 16 + fineY + 8);
     }
   }
 
-  /**
-   * このスキャンラインの背景256ピクセルを、loopy v レジスタ（coarse X/Y・fine Y・
-   * ネームテーブル選択ビット）とfine X(this.fineX)から計算する。
-   * coarse Y/fine Y/垂直ネームテーブルビットはこのスキャンラインの間ずっと固定（tickOne側で
-   * スキャンライン境界ごとに更新済み）で、coarse XだけをタイルごとにincrementCoarseX()で
-   * 進める。fine X分の端数を吸収するため、33タイル(264px)分を計算してから256pxへ切り出す
-   * （Phase 2で導入する背景シフトレジスタパイプラインと数学的に等価な結果になる）。
-   */
-  private computeBackgroundRow(bgPixelValue: Uint8Array, colorIndex: Uint8Array): void {
-    const bgPatternBase = this.ctrl & 0x10 ? 0x1000 : 0x0000;
-    const fineY = (this.v >> 12) & 0x07;
+  /** dot%8===0で、直前にフェッチし終えた1タイル分をシフトレジスタの下位バイトへ読み込む。 */
+  private reloadBgShiftRegisters(): void {
+    this.bgPatternLoShift = (this.bgPatternLoShift & 0xff00) | this.ptLowLatch;
+    this.bgPatternHiShift = (this.bgPatternHiShift & 0xff00) | this.ptHighLatch;
+    this.bgAttribLoShift = (this.bgAttribLoShift & 0xff00) | (this.nextPaletteBits & 1 ? 0xff : 0x00);
+    this.bgAttribHiShift = (this.bgAttribHiShift & 0xff00) | (this.nextPaletteBits & 2 ? 0xff : 0x00);
+  }
 
-    const TILE_COUNT = 33;
-    const wideValue = new Uint8Array(TILE_COUNT * 8);
-    const wideGroup = new Uint8Array(TILE_COUNT * 8);
+  private shiftBackgroundRegisters(): void {
+    this.bgPatternLoShift = (this.bgPatternLoShift << 1) & 0xffff;
+    this.bgPatternHiShift = (this.bgPatternHiShift << 1) & 0xffff;
+    this.bgAttribLoShift = (this.bgAttribLoShift << 1) & 0xffff;
+    this.bgAttribHiShift = (this.bgAttribHiShift << 1) & 0xffff;
+  }
 
-    let rowV = this.v;
-    for (let tileCol = 0; tileCol < TILE_COUNT; tileCol++) {
-      const ntAddr = 0x2000 | (rowV & 0x0fff);
-      const tileIndex = this.ppuMemRead(ntAddr);
-
-      const attrAddr = 0x23c0 | (rowV & 0x0c00) | ((rowV >> 4) & 0x38) | ((rowV >> 2) & 0x07);
-      const attrByte = this.ppuMemRead(attrAddr);
-      const shift = ((rowV >> 4) & 4) | (rowV & 2);
-      const paletteGroup = (attrByte >> shift) & 0x03;
-
-      const patternAddr = bgPatternBase + tileIndex * 16 + fineY;
-      const lo = this.ppuMemRead(patternAddr);
-      const hi = this.ppuMemRead(patternAddr + 8);
-
-      for (let col = 0; col < 8; col++) {
-        const bit = 7 - col;
-        wideValue[tileCol * 8 + col] = (((hi >> bit) & 1) << 1) | ((lo >> bit) & 1);
-        wideGroup[tileCol * 8 + col] = paletteGroup;
-      }
-
-      rowV = incrementCoarseX(rowV);
+  /** fine X(this.fineX)ぶんシフトレジスタの上位側から1ピクセル抽出し、rowBgPixelValue/rowColorIndexへ書く。 */
+  private sampleBackgroundPixel(x: number, bgEnabled: boolean): void {
+    if (!bgEnabled) {
+      this.rowBgPixelValue[x] = 0;
+      return;
     }
+    const bitMask = 0x8000 >> this.fineX;
+    const pixelValue =
+      (((this.bgPatternHiShift & bitMask) !== 0 ? 1 : 0) << 1) | ((this.bgPatternLoShift & bitMask) !== 0 ? 1 : 0);
+    this.rowBgPixelValue[x] = pixelValue;
+    if (pixelValue !== 0) {
+      const paletteGroup =
+        (((this.bgAttribHiShift & bitMask) !== 0 ? 1 : 0) << 1) | ((this.bgAttribLoShift & bitMask) !== 0 ? 1 : 0);
+      this.rowColorIndex[x] = (this.paletteRam[paletteGroup * 4 + pixelValue] ?? 0) & 0x3f;
+    }
+  }
 
+  /** dot 256（このスキャンラインの256ピクセル全てサンプル済み）で、スプライト合成とframebuffer書き込みを行う。 */
+  private finishScanline(y: number, spritesEnabled: boolean): void {
+    const backdrop = (this.paletteRam[0] ?? 0) & 0x3f;
+    const colorIndex = new Uint8Array(256);
     for (let x = 0; x < 256; x++) {
-      const pixelValue = wideValue[x + this.fineX] ?? 0;
-      bgPixelValue[x] = pixelValue;
-      if (pixelValue !== 0) {
-        const paletteGroup = wideGroup[x + this.fineX] ?? 0;
-        colorIndex[x] = (this.paletteRam[paletteGroup * 4 + pixelValue] ?? 0) & 0x3f;
-      }
+      colorIndex[x] = this.rowBgPixelValue[x] === 0 ? backdrop : (this.rowColorIndex[x] ?? backdrop);
+    }
+    if (spritesEnabled) {
+      this.compositeSpritesRow(y, this.rowBgPixelValue, colorIndex);
+    }
+    for (let x = 0; x < 256; x++) {
+      const rgb = NES_PALETTE[(colorIndex[x] ?? backdrop) & 0x3f] ?? 0;
+      this.setPixel(x, y, rgb);
     }
   }
 

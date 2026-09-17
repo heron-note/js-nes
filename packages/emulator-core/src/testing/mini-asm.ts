@@ -108,6 +108,11 @@ export class Asm {
     this.emit(0xf0);
     return this.emitRelRef(label);
   }
+  /** Vフラグがクリアなら分岐。`BIT`直後に使うとPPUSTATUSのbit6（スプライト0ヒット）をポーリングできる。 */
+  BVC(label: string): this {
+    this.emit(0x50);
+    return this.emitRelRef(label);
+  }
   JMP(label: string): this {
     this.emit(0x4c);
     return this.emitAbsRef(label);
