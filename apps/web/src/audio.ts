@@ -1,4 +1,3 @@
-import type { ChannelSnapshot, Nes } from "@js-nes/emulator-core";
 import workletSource from "./audio-worklet-processor.js?raw";
 
 /**
@@ -14,6 +13,13 @@ import workletSource from "./audio-worklet-processor.js?raw";
  * できない。audio-worklet-processor.js のソースを`?raw`でそのまま文字列として
  * バンドルに埋め込み、実行時にBlob URL化してロードすることで、通常のWeb版・
  * スタンドアロンHTML版のどちらでも同じ仕組みで動くようにしている。
+ *
+ * NESエミュレーション本体はnesWorker.ts（Web Worker）へ移し、メインスレッドの
+ * requestAnimationFrameループの詰まりから音声配信を切り離した
+ * （C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md 参照）。
+ * Phase 1時点ではまだ暫定的にWorker→メインスレッド→AudioWorkletの経路（deliverSamples）
+ * を使うが、Phase 2でworklet nodeの`.port`自体をWorkerへ譲渡し、メインスレッドを
+ * 一切経由しない直接配信に置き換える。
  */
 
 const CHANNEL_GAIN = 0.13;
@@ -42,7 +48,12 @@ export class AudioEngine {
   private ctx: AudioContext | null = null;
   private workletNode: AudioWorkletNode | null = null;
   private workletReady = false;
-  private lastSampleRateSetOn: Nes | null = null;
+  private worker: Worker | null = null;
+
+  /** main.ts起動時、ユーザー操作を待つ前に一度だけ呼ぶ（参照を保持するだけで副作用は無い）。 */
+  setWorker(worker: Worker): void {
+    this.worker = worker;
+  }
 
   private ensureStarted(): void {
     if (this.ctx) return;
@@ -67,6 +78,8 @@ export class AudioEngine {
     node.connect(ctx.destination);
     this.workletNode = node;
     this.workletReady = true;
+    // Phase 1暫定: サンプルレートだけをWorkerへ伝える（Phase 2でaudioPort譲渡に統合される）。
+    this.worker?.postMessage({ type: "setSampleRate", rate: ctx.sampleRate });
   }
 
   /** ブラウザの自動再生ポリシー対応のため、ユーザー操作イベント内で呼び出す。 */
@@ -117,27 +130,12 @@ export class AudioEngine {
   }
 
   /**
-   * 毎フレーム呼び出す。Apu側で既に生成済みのPCMサンプル（Apu.drainSamples()）を
-   * 取り出し、AudioWorkletへ転送する。ApuのサンプルレートはAudioContextの実際の
-   * サンプルレートに一度だけ同期させる（ROMの再ビルド・再読み込みをまたいでも
-   * Apu.reset()ではサンプルレート設定自体はクリアされないため、Nesインスタンスごとに
-   * 1回だけ設定すれば十分）。
+   * Phase 1限定の暫定経路: nesWorker.tsから届いたPCMサンプル（"audioSamples"メッセージ）
+   * をAudioWorkletへ中継する。Phase 2でworklet nodeの`.port`自体をWorkerへ譲渡し、
+   * メインスレッドを経由しない直接配信に置き換えたらこのメソッドは削除する。
    */
-  update(nes: Nes): void {
-    if (!this.ctx) return;
-    if (this.lastSampleRateSetOn !== nes) {
-      nes.apu.setSampleRate(this.ctx.sampleRate);
-      this.lastSampleRateSetOn = nes;
-    }
-
-    // Apu内部のサンプルバッファが無制限に膨らまないよう、workletの準備が
-    // まだでも毎フレーム必ず取り出す（この間のサンプルは破棄される）。
-    const samples = nes.apu.drainSamples();
+  deliverSamples(samples: Float32Array): void {
     if (!this.workletReady || !this.workletNode || samples.length === 0) return;
     this.workletNode.port.postMessage(samples, [samples.buffer]);
-  }
-
-  getChannelSnapshotsForUi(nes: Nes): ChannelSnapshot[] {
-    return [0, 1, 2, 3].map((c) => nes.apu.getChannelState(c as 0 | 1 | 2 | 3));
   }
 }

@@ -1,4 +1,4 @@
-import { BUTTON, Nes, buildSmokeRom, type ButtonName } from "@js-nes/emulator-core";
+import { BUTTON, buildSmokeRom, type ButtonName, type ChannelSnapshot } from "@js-nes/emulator-core";
 import { compile } from "@js-nes/dsl-compiler";
 import { downloadRom } from "@js-nes/rom-builder";
 import { getTiles, initSpriteEditor, setTiles } from "./spriteEditor.js";
@@ -6,6 +6,8 @@ import { AudioEngine, noteIndexToLabel } from "./audio.js";
 import { downloadCanvasAsPng, renderCartridgeLabel } from "./cartridgeLabel.js";
 import { exportStandaloneHtml } from "./standaloneExport.js";
 import { NetplayGuest, NetplayHost } from "./netplay.js";
+import NesWorkerCtor from "./nesWorker.ts?worker&inline";
+import type { LoadRomContext, NesWorkerOutboundMessage } from "./nesWorkerProtocol.js";
 import * as Blockly from "blockly/core";
 import { generatePartBody, generateSceneBody, initBlockEditor } from "./blocks/blockEditor.js";
 import { PART_TOOLBOX, SCENE_TOOLBOX } from "./blocks/toolbox.js";
@@ -65,8 +67,13 @@ if (!ctx) {
 
 const imageData = ctx.createImageData(256, 240);
 
-const nes = new Nes();
+// --- NESエミュレーション本体はWeb Worker（nesWorker.ts）で自走させる。 ---
+// メインスレッドのrequestAnimationFrameループ（描画・DOM操作等で詰まりうる）から
+// 音声生成・配信を切り離すのが目的（C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md）。
+const nesWorker = new NesWorkerCtor();
 const audio = new AudioEngine();
+audio.setWorker(nesWorker);
+
 let audioStarted = false;
 function startAudioOnce(): void {
   if (audioStarted) return;
@@ -76,9 +83,45 @@ function startAudioOnce(): void {
 window.addEventListener("pointerdown", startAudioOnce, { once: true });
 window.addEventListener("keydown", startAudioOnce, { once: true });
 
+// Workerから届く最新の映像/音源メーター情報。rAFループはこれをベストエフォートで
+// 描画するだけで、Worker側の実際のペースとは無関係。
+let latestFramebuffer: Uint8ClampedArray | null = null;
+let latestChannelSnapshots: ChannelSnapshot[] = [];
+const loadRomResultHandlers: Partial<Record<LoadRomContext, (ok: boolean, message?: string) => void>> = {};
+
+nesWorker.onmessage = (e: MessageEvent<NesWorkerOutboundMessage>) => {
+  const msg = e.data;
+  switch (msg.type) {
+    case "frame":
+      latestFramebuffer = msg.framebuffer;
+      latestChannelSnapshots = msg.channelSnapshots;
+      break;
+    case "loadRomResult":
+      loadRomResultHandlers[msg.context]?.(msg.ok, msg.message);
+      break;
+    case "audioSamples":
+      audio.deliverSamples(msg.samples); // Phase 1限定の暫定経路（Phase 2で削除予定）
+      break;
+    case "fatalError":
+      statusEl!.textContent = `エミュレーターが異常終了しました: ${msg.message}（ページを再読み込みしてください）`;
+      break;
+  }
+};
+nesWorker.onerror = (ev: ErrorEvent) => {
+  statusEl!.textContent = `エミュレーターWorkerでエラーが発生しました: ${ev.message}（ページを再読み込みしてください）`;
+};
+
+function loadRomInWorker(bytes: Uint8Array, context: LoadRomContext): void {
+  nesWorker.postMessage({ type: "loadRom", bytes, context });
+}
+
+loadRomResultHandlers.demo = (ok, message) => {
+  statusEl!.textContent = ok
+    ? "動作確認用ROM（emulator-core単体の疎通確認用）を実行中"
+    : `動作確認用ROMの読み込みに失敗しました: ${message}`;
+};
 function loadDemoRom(): void {
-  nes.loadRom(buildSmokeRom());
-  statusEl!.textContent = "動作確認用ROM（emulator-core単体の疎通確認用）を実行中";
+  loadRomInWorker(buildSmokeRom(), "demo");
 }
 
 function fromBase64(b64: string): Uint8Array {
@@ -436,6 +479,16 @@ function refreshCartridgeLabel(): void {
   });
 }
 
+// build文脈のロード結果: 「実際に動いているか」を表すstatusEl文言だけを非同期に反映する。
+// lastBuiltRom保存・ダウンロードボタン活性化・カートリッジラベル更新・localStorage保存は
+// 「コンパイル済みバイト列に対する処理」であり実機起動の成否とは独立なので、
+// buildAndRun()内でloadRomInWorker()送信直後に楽観的に同期実行する。
+loadRomResultHandlers.build = (ok, message) => {
+  statusEl!.textContent = ok
+    ? "「パーツ」「シーン」タブで組み立てたプロジェクトをコンパイルして実行中"
+    : `プロジェクトの実行に失敗しました: ${message}`;
+};
+
 function buildAndRun(): void {
   syncCurrentPartFromEditors();
   syncCurrentSceneFromEditors();
@@ -447,11 +500,10 @@ function buildAndRun(): void {
     buildSourcePreview!.value = source;
     const assets = buildProjectAssets(project);
     const { rom } = compile(source, assets);
-    nes.loadRom(rom);
+    loadRomInWorker(rom, "build");
     lastBuiltRom = rom;
     downloadBtn!.disabled = false;
     standaloneExportBtn!.disabled = false;
-    statusEl!.textContent = "「パーツ」「シーン」タブで組み立てたプロジェクトをコンパイルして実行中";
     buildStatus!.textContent = "ビルド成功";
     refreshCartridgeLabel();
 
@@ -511,9 +563,13 @@ if (embeddedDataEl?.textContent) {
   }
 }
 
+loadRomResultHandlers.embedded = (ok, message) => {
+  if (!ok) statusEl!.textContent = `配布用HTMLに同梱されたROMの実行に失敗しました: ${message}`;
+};
+
 if (embeddedRomB64) {
   const rom = fromBase64(embeddedRomB64);
-  nes.loadRom(rom);
+  loadRomInWorker(rom, "embedded");
   lastBuiltRom = rom;
   downloadBtn.disabled = false;
   standaloneExportBtn.disabled = false;
@@ -597,12 +653,18 @@ romUploadInput?.addEventListener("change", () => {
     .arrayBuffer()
     .then((buf) => {
       const bytes = new Uint8Array(buf);
-      nes.loadRom(bytes);
-      lastBuiltRom = bytes;
-      downloadBtn.disabled = false;
-      standaloneExportBtn.disabled = false;
-      statusEl.textContent = `外部ROM「${file.name}」を実行中`;
-      romUploadStatus.textContent = "読み込み成功";
+      loadRomResultHandlers.upload = (ok, message) => {
+        if (ok) {
+          lastBuiltRom = bytes;
+          downloadBtn.disabled = false;
+          standaloneExportBtn.disabled = false;
+          statusEl.textContent = `外部ROM「${file.name}」を実行中`;
+          romUploadStatus.textContent = "読み込み成功";
+        } else {
+          romUploadStatus.textContent = `読み込み失敗: ${message}`;
+        }
+      };
+      loadRomInWorker(bytes, "upload");
     })
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
@@ -627,8 +689,7 @@ if (metersContainer) {
 }
 
 function updateChannelMeters(): void {
-  const snapshots = audio.getChannelSnapshotsForUi(nes);
-  snapshots.forEach((s, i) => {
+  latestChannelSnapshots.forEach((s, i) => {
     const el = meterEls[i];
     if (!el) return;
     el.fill.style.width = `${s.enabled ? (s.volume / 15) * 100 : 0}%`;
@@ -636,11 +697,13 @@ function updateChannelMeters(): void {
   });
 }
 
+// Workerから届いた最新のフレームバッファをベストエフォートで描画するだけ。
+// Worker側の実際の描画/音声ペースとは無関係で、初回フレーム到着前は何も描かない。
 function frame(): void {
-  nes.runFrame();
-  imageData.data.set(nes.ppu.framebuffer);
-  ctx!.putImageData(imageData, 0, 0);
-  audio.update(nes);
+  if (latestFramebuffer) {
+    imageData.data.set(latestFramebuffer);
+    ctx!.putImageData(imageData, 0, 0);
+  }
   updateChannelMeters();
   requestAnimationFrame(frame);
 }
@@ -752,7 +815,7 @@ function setLocalButton(name: ButtonName, pressed: boolean): void {
     netplayGuest.sendButtons(guestButtons);
     return;
   }
-  nes.controller1.setButton(BUTTON[name], pressed);
+  nesWorker.postMessage({ type: "button", controller: 1, bit: BUTTON[name], pressed });
 }
 
 // --- キーボード入力（PC向け） ---
@@ -866,7 +929,7 @@ const netplayGuestVideoEl = document.querySelector<HTMLVideoElement>("#netplay-g
 
 function applyGuestButtons(byte: number): void {
   for (let bit = 0; bit < 8; bit++) {
-    nes.controller2.setButton(bit, (byte & (1 << bit)) !== 0);
+    nesWorker.postMessage({ type: "button", controller: 2, bit, pressed: (byte & (1 << bit)) !== 0 });
   }
 }
 
