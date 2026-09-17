@@ -12,15 +12,11 @@ export type LoadRomContext = "demo" | "build" | "embedded" | "upload";
 export type NesWorkerInboundMessage =
   | { type: "loadRom"; bytes: Uint8Array; context: LoadRomContext }
   | { type: "button"; controller: 1 | 2; bit: number; pressed: boolean }
-  | { type: "audioPort"; port: MessagePort; sampleRate: number }
-  // Phase 1限定の暫定メッセージ: audioPort譲渡(Phase 2)が入るまでの間、
-  // AudioContext起動が完了した時点でサンプルレートだけを個別に伝える。
-  | { type: "setSampleRate"; rate: number };
+  // AudioWorkletNode.portの所有権をそのままWorkerへ譲渡する。以後Workerはメインスレッドを
+  // 一切経由せず、このportへ直接PCMサンプルをpostMessageする。
+  | { type: "audioPort"; port: MessagePort; sampleRate: number };
 
 export type NesWorkerOutboundMessage =
   | { type: "frame"; framebuffer: Uint8ClampedArray; channelSnapshots: ChannelSnapshot[] }
   | { type: "loadRomResult"; context: LoadRomContext; ok: boolean; message?: string }
-  | { type: "fatalError"; message: string }
-  // Phase 1限定の暫定メッセージ: audioPort譲渡(Phase 2)が入るまでの間、
-  // Workerで生成したPCMサンプルをメインスレッド経由でAudioWorkletへ届ける。
-  | { type: "audioSamples"; samples: Float32Array };
+  | { type: "fatalError"; message: string };

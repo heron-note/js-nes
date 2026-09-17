@@ -17,9 +17,11 @@ import workletSource from "./audio-worklet-processor.js?raw";
  * NESエミュレーション本体はnesWorker.ts（Web Worker）へ移し、メインスレッドの
  * requestAnimationFrameループの詰まりから音声配信を切り離した
  * （C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md 参照）。
- * Phase 1時点ではまだ暫定的にWorker→メインスレッド→AudioWorkletの経路（deliverSamples）
- * を使うが、Phase 2でworklet nodeの`.port`自体をWorkerへ譲渡し、メインスレッドを
- * 一切経由しない直接配信に置き換える。
+ * AudioWorkletNodeの`.port`自体の所有権をWorkerへ譲渡することで、以後は
+ * メインスレッドを一切経由せずWorker→AudioWorkletProcessorへ直接配信される
+ * （Phase 2、Web.dev「audio worklet design pattern: state and worker」等で
+ * 確立されたパターン）。譲渡後はメインスレッド側で`workletNode.port`を
+ * 使うことはできなくなる（意図的）。
  */
 
 const CHANNEL_GAIN = 0.13;
@@ -46,8 +48,6 @@ export function noteIndexToLabel(noteIndex: number): string {
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
-  private workletNode: AudioWorkletNode | null = null;
-  private workletReady = false;
   private worker: Worker | null = null;
 
   /** main.ts起動時、ユーザー操作を待つ前に一度だけ呼ぶ（参照を保持するだけで副作用は無い）。 */
@@ -76,10 +76,9 @@ export class AudioEngine {
       outputChannelCount: [2],
     });
     node.connect(ctx.destination);
-    this.workletNode = node;
-    this.workletReady = true;
-    // Phase 1暫定: サンプルレートだけをWorkerへ伝える（Phase 2でaudioPort譲渡に統合される）。
-    this.worker?.postMessage({ type: "setSampleRate", rate: ctx.sampleRate });
+    // worklet nodeの`.port`の所有権をそのままWorkerへ譲渡する。これ以降Workerは
+    // メインスレッドを一切経由せず、このportへ直接PCMサンプルをpostMessageできる。
+    this.worker?.postMessage({ type: "audioPort", port: node.port, sampleRate: ctx.sampleRate }, [node.port]);
   }
 
   /** ブラウザの自動再生ポリシー対応のため、ユーザー操作イベント内で呼び出す。 */
@@ -127,15 +126,5 @@ export class AudioEngine {
     osc.connect(gain);
     osc.start(now);
     osc.stop(now + durationSec + 0.1);
-  }
-
-  /**
-   * Phase 1限定の暫定経路: nesWorker.tsから届いたPCMサンプル（"audioSamples"メッセージ）
-   * をAudioWorkletへ中継する。Phase 2でworklet nodeの`.port`自体をWorkerへ譲渡し、
-   * メインスレッドを経由しない直接配信に置き換えたらこのメソッドは削除する。
-   */
-  deliverSamples(samples: Float32Array): void {
-    if (!this.workletReady || !this.workletNode || samples.length === 0) return;
-    this.workletNode.port.postMessage(samples, [samples.buffer]);
   }
 }

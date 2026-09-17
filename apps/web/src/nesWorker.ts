@@ -4,7 +4,9 @@ import type { NesWorkerInboundMessage, NesWorkerOutboundMessage } from "./nesWor
 /**
  * NESエミュレーション本体（Nes.runFrame()のステップ実行）を専用Workerで自走させる。
  * メインスレッドのrequestAnimationFrameループ（描画・DOM操作等で詰まりうる）から
- * 音声生成・配信を完全に切り離すのが目的。詳細はプラン
+ * 音声生成・配信を完全に切り離すのが目的。音声はAudioWorkletNode.portの所有権を
+ * このWorkerへ譲渡してもらい（audio.ts参照）、メインスレッドを一切経由せず直接
+ * 配信する（Phase 2）。詳細はプラン
  * C:\Users\alleng06\.claude\plans\refactored-cuddling-kay.md 参照。
  *
  * tsconfig.base.jsonのlibにWebWorkerが含まれておらず(DOM libのみ)、`self`はWindow型として
@@ -51,12 +53,13 @@ function tick(): void {
   const channelSnapshots = [0, 1, 2, 3].map((c) => nes.apu.getChannelState(c as 0 | 1 | 2 | 3));
   post({ type: "frame", framebuffer, channelSnapshots }, [framebuffer.buffer]);
 
+  // audioPort未接続の間（AudioContext起動前のジェスチャー待ち等）はAPU内部の
+  // サンプルバッファが無制限に膨らまないよう、届け先が無くても必ず取り出して捨てる。
   const samples = nes.apu.drainSamples();
-  if (audioPort) {
-    if (samples.length > 0) audioPort.postMessage(samples, [samples.buffer]);
-  } else {
-    // Phase 1暫定: audioPort未接続の間はメインスレッド経由で届ける。
-    if (samples.length > 0) post({ type: "audioSamples", samples }, [samples.buffer]);
+  if (audioPort && samples.length > 0) {
+    // メインスレッドを一切経由せず、Workerから直接AudioWorkletProcessorへ届ける
+    // （Phase 2の核心）。これによりメインスレッドの詰まりが音声配信に一切影響しない。
+    audioPort.postMessage(samples, [samples.buffer]);
   }
 
   nextFrameAt += FRAME_MS;
@@ -99,14 +102,6 @@ ctx.onmessage = (e: MessageEvent<NesWorkerInboundMessage>) => {
       audioPort = msg.port;
       if (!sampleRateApplied) {
         nes.apu.setSampleRate(msg.sampleRate);
-        sampleRateApplied = true;
-      }
-      break;
-    }
-    case "setSampleRate": {
-      // Phase 1限定: audioPort譲渡が入るまでの暫定経路。
-      if (!sampleRateApplied) {
-        nes.apu.setSampleRate(msg.rate);
         sampleRateApplied = true;
       }
       break;

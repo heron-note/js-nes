@@ -99,9 +99,6 @@ nesWorker.onmessage = (e: MessageEvent<NesWorkerOutboundMessage>) => {
     case "loadRomResult":
       loadRomResultHandlers[msg.context]?.(msg.ok, msg.message);
       break;
-    case "audioSamples":
-      audio.deliverSamples(msg.samples); // Phase 1限定の暫定経路（Phase 2で削除予定）
-      break;
     case "fatalError":
       statusEl!.textContent = `エミュレーターが異常終了しました: ${msg.message}（ページを再読み込みしてください）`;
       break;
