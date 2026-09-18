@@ -57,15 +57,17 @@ export function applyDirDiff(
 /**
  * 円形タッチ領域の仮想8方向スティック。
  * pointer イベントでノブを動かし、方向変化時だけコールバックする。
+ * @param maxTravelPx ノブの最大移動量（中央ミニスティック向けに小さくできる）
  */
 export function bindVirtualStick(
   root: HTMLElement,
   knob: HTMLElement,
   onDirChange: (dir: DirState) => void,
+  maxTravelPx = 28,
 ): void {
   let activePointer: number | null = null;
   let prev: DirState = { ...EMPTY_DIR };
-  const maxTravel = 28; // px
+  const maxTravel = maxTravelPx;
 
   const updateFromPoint = (clientX: number, clientY: number): void => {
     const rect = root.getBoundingClientRect();

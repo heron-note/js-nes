@@ -1470,11 +1470,87 @@ button#build-btn {
   user-select: none;
 }
 
+/* 十字キー＋中央ミニスティック */
+.dpad {
+  display: grid;
+  grid-template-columns: 44px 44px 44px;
+  grid-template-rows: 44px 44px 44px;
+  gap: 3px;
+  flex: 0 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.dpad-up {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.dpad-left {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.dpad-right {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.dpad-down {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.dpad-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.75rem;
+  line-height: 1;
+  touch-action: none;
+  cursor: pointer;
+}
+
+.dpad-btn:active {
+  filter: brightness(1.35);
+  background: #243040;
+}
+
 .stick {
   flex: 0 0 auto;
   touch-action: none;
   cursor: grab;
   outline: none;
+}
+
+.stick-mini {
+  grid-column: 2;
+  grid-row: 2;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stick-mini .stick-base {
+  width: 40px;
+  height: 40px;
+  border-width: 1px;
+}
+
+.stick-mini .stick-knob {
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  margin-top: -9px;
+  border-width: 1px;
 }
 
 .stick-base {
@@ -1604,6 +1680,29 @@ button#build-btn {
     margin-top: -16px;
   }
 
+  .dpad {
+    grid-template-columns: 40px 40px 40px;
+    grid-template-rows: 40px 40px 40px;
+    gap: 2px;
+  }
+
+  .stick-mini {
+    width: 40px;
+    height: 40px;
+  }
+
+  .stick-mini .stick-base {
+    width: 36px;
+    height: 36px;
+  }
+
+  .stick-mini .stick-knob {
+    width: 16px;
+    height: 16px;
+    margin-left: -8px;
+    margin-top: -8px;
+  }
+
   .pad-center {
     gap: 6px;
     min-width: 0;
@@ -1637,9 +1736,15 @@ button#build-btn {
 }
 
 @media (max-width: 360px) {
-  .stick-base {
-    width: 68px;
-    height: 68px;
+  .dpad {
+    grid-template-columns: 36px 36px 36px;
+    grid-template-rows: 36px 36px 36px;
+  }
+
+  .stick-mini,
+  .stick-mini .stick-base {
+    width: 34px;
+    height: 34px;
   }
 
   .buttons .round {

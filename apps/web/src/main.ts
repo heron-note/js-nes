@@ -1518,13 +1518,53 @@ window.addEventListener("keyup", (e) => {
 // --- 仮想パッド: 8方向スティック + SELECT/START/A/B ---
 const stickRoot = document.querySelector<HTMLElement>("#virtual-stick");
 const stickKnob = document.querySelector<HTMLElement>("#virtual-stick-knob");
-let stickDir: DirState = { up: false, down: false, left: false, right: false };
-if (stickRoot && stickKnob) {
-  bindVirtualStick(stickRoot, stickKnob, (next) => {
-    applyDirDiff(stickDir, next, setLocalButton);
-    stickDir = next;
-  });
+const EMPTY_DIR: DirState = { up: false, down: false, left: false, right: false };
+let stickDir: DirState = { ...EMPTY_DIR };
+let dpadDir: DirState = { ...EMPTY_DIR };
+let combinedDir: DirState = { ...EMPTY_DIR };
+
+function syncVirtualDirs(): void {
+  const next: DirState = {
+    up: stickDir.up || dpadDir.up,
+    down: stickDir.down || dpadDir.down,
+    left: stickDir.left || dpadDir.left,
+    right: stickDir.right || dpadDir.right,
+  };
+  applyDirDiff(combinedDir, next, setLocalButton);
+  combinedDir = next;
 }
+
+if (stickRoot && stickKnob) {
+  // 十字の中央に収めるミニスティック（移動量も小さめ）
+  bindVirtualStick(
+    stickRoot,
+    stickKnob,
+    (next) => {
+      stickDir = next;
+      syncVirtualDirs();
+    },
+    14,
+  );
+}
+
+const dpadButtons = document.querySelectorAll<HTMLButtonElement>("#virtual-dpad button[data-dir]");
+dpadButtons.forEach((el) => {
+  const dir = el.dataset.dir;
+  if (dir !== "UP" && dir !== "DOWN" && dir !== "LEFT" && dir !== "RIGHT") return;
+  const key = dir.toLowerCase() as keyof DirState;
+
+  const setPressed = (pressed: boolean) => (ev: Event) => {
+    ev.preventDefault();
+    if (dpadDir[key] === pressed) return;
+    dpadDir = { ...dpadDir, [key]: pressed };
+    syncVirtualDirs();
+  };
+
+  el.addEventListener("pointerdown", setPressed(true));
+  el.addEventListener("pointerup", setPressed(false));
+  el.addEventListener("pointerleave", setPressed(false));
+  el.addEventListener("pointercancel", setPressed(false));
+});
 
 const padButtons = document.querySelectorAll<HTMLButtonElement>("#virtual-pad button[data-btn]");
 padButtons.forEach((el) => {

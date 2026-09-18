@@ -26,16 +26,22 @@
               パッドを閉じる
             </button>
             <div class="pad" id="virtual-pad" aria-label="仮想コントローラ">
-              <div
-                class="stick"
-                id="virtual-stick"
-                role="application"
-                aria-label="8方向スティック"
-                tabindex="0"
-              >
-                <div class="stick-base">
-                  <div class="stick-knob" id="virtual-stick-knob"></div>
+              <div class="dpad" id="virtual-dpad" aria-label="十字キーと中央スティック">
+                <button type="button" data-dir="UP" class="dpad-btn dpad-up" aria-label="上">▲</button>
+                <button type="button" data-dir="LEFT" class="dpad-btn dpad-left" aria-label="左">◀</button>
+                <div
+                  class="stick stick-mini"
+                  id="virtual-stick"
+                  role="application"
+                  aria-label="中央の8方向スティック"
+                  tabindex="0"
+                >
+                  <div class="stick-base">
+                    <div class="stick-knob" id="virtual-stick-knob"></div>
+                  </div>
                 </div>
+                <button type="button" data-dir="RIGHT" class="dpad-btn dpad-right" aria-label="右">▶</button>
+                <button type="button" data-dir="DOWN" class="dpad-btn dpad-down" aria-label="下">▼</button>
               </div>
               <div class="pad-center">
                 <div class="pad-center-row">
@@ -92,7 +98,7 @@
                     <div class="controls-guide-block">
                       <h4>キーボード</h4>
                       <div class="key-guide-row">
-                        <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span>十字（斜め可）</span>
+                        <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span>十字（中央スティックで斜めも可）</span>
                       </div>
                       <div class="key-guide-row"><kbd>Z</kbd><span>B</span></div>
                       <div class="key-guide-row"><kbd>X</kbd><span>A</span></div>
