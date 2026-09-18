@@ -60,7 +60,7 @@ import {
   type CloudFileEntry,
 } from "./githubCloud.js";
 import { isGithubCloudConfigured } from "./githubConfig.js";
-import { applyPlayI18n, t } from "./playI18n.js";
+import { applyPlayI18n, getPlayLocale, t } from "./playI18n.js";
 
 applyPlayI18n();
 
@@ -852,6 +852,12 @@ const sampleRomPlayBtn = document.querySelector<HTMLButtonElement>("#sample-rom-
 const sampleRomBlurb = document.querySelector<HTMLElement>("#sample-rom-blurb");
 const sampleRomSummary = document.querySelector<HTMLElement>("#sample-rom-summary");
 const sampleRomHowto = document.querySelector<HTMLElement>("#sample-rom-howto");
+const sampleRomAuthor = document.querySelector<HTMLElement>("#sample-rom-author");
+const sampleRomLicense = document.querySelector<HTMLElement>("#sample-rom-license");
+const sampleRomCopyright = document.querySelector<HTMLElement>("#sample-rom-copyright");
+const sampleRomCopyrightRow = document.querySelector<HTMLElement>("#sample-rom-copyright-row");
+const sampleRomUrl = document.querySelector<HTMLElement>("#sample-rom-url");
+const sampleRomUrlRow = document.querySelector<HTMLElement>("#sample-rom-url-row");
 let sampleRomEntries: SampleRomEntry[] = [];
 
 type SampleKind = NonNullable<SampleRomEntry["kind"]>;
@@ -892,14 +898,50 @@ function updateSampleRomBlurb(): void {
     return;
   }
   const kind = kindOf(entry);
+  const en = getPlayLocale() === "en";
   const summary =
+    (en ? entry.summaryEn : entry.summary)?.trim() ||
+    entry.summaryEn?.trim() ||
     entry.summary?.trim() ||
-    t("sample.fallbackSummary", { kind: kindLabel(kind), author: entry.author, license: entry.license, mapper: entry.mapper });
+    t("sample.fallbackSummary", {
+      kind: kindLabel(kind),
+      author: entry.author,
+      license: entry.license,
+      mapper: entry.mapper,
+    });
   const howto =
+    (en ? entry.howtoEn : entry.howto)?.trim() ||
+    entry.howtoEn?.trim() ||
     entry.howto?.trim() ||
     t("sample.fallbackHowto");
   sampleRomSummary.textContent = `【${kindTag(kind)}】${summary}`;
   sampleRomHowto.textContent = howto;
+
+  if (sampleRomAuthor) sampleRomAuthor.textContent = entry.author;
+  if (sampleRomLicense) {
+    sampleRomLicense.textContent = `${entry.license} · ${t("sample.metaMapper")} ${entry.mapper}`;
+  }
+  if (sampleRomCopyright && sampleRomCopyrightRow) {
+    const credit = entry.copyright?.trim() ?? "";
+    sampleRomCopyright.textContent = credit;
+    sampleRomCopyrightRow.hidden = credit.length === 0;
+  }
+  if (sampleRomUrl && sampleRomUrlRow) {
+    const href = entry.url?.trim() ?? "";
+    sampleRomUrl.replaceChildren();
+    if (href) {
+      const a = document.createElement("a");
+      a.href = href;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      a.textContent = href.replace(/^https?:\/\//, "");
+      sampleRomUrl.appendChild(a);
+      sampleRomUrlRow.hidden = false;
+    } else {
+      sampleRomUrlRow.hidden = true;
+    }
+  }
+
   sampleRomBlurb.removeAttribute("hidden");
 }
 

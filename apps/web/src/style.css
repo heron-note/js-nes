@@ -794,6 +794,39 @@ button.danger {
   line-height: 1.4;
 }
 
+.sample-rom-meta {
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.sample-rom-meta-row {
+  display: grid;
+  grid-template-columns: 7.5em 1fr;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.sample-rom-meta-row dt {
+  margin: 0;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.sample-rom-meta-row dd {
+  margin: 0;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.sample-rom-meta-row a {
+  color: var(--accent);
+}
+
 
 .cloud-panel {
   margin-top: 28px;

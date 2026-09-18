@@ -126,6 +126,11 @@ const messages = {
       "{kind}。作者 {author} / {license} / Mapper {mapper}",
     "sample.fallbackHowto":
       "操作はソフト内の案内に従ってください。テンプレ・検証ROMは遊ぶ要素がないことがあります。",
+    "sample.metaAuthor": "作者",
+    "sample.metaLicense": "ライセンス",
+    "sample.metaCopyright": "著作権",
+    "sample.metaUrl": "公式／配布",
+    "sample.metaMapper": "Mapper",
     "github.panelAria": "GitHubクラウド",
     "github.heading": "GitHub 倉庫",
     "github.loggedOut": "未ログイン",
@@ -298,6 +303,11 @@ const messages = {
       "{kind}. Author {author} / {license} / Mapper {mapper}",
     "sample.fallbackHowto":
       "Follow in-software instructions. Templates and test ROMs may have little to play.",
+    "sample.metaAuthor": "Author",
+    "sample.metaLicense": "License",
+    "sample.metaCopyright": "Copyright",
+    "sample.metaUrl": "Official / source",
+    "sample.metaMapper": "Mapper",
     "github.panelAria": "GitHub cloud",
     "github.heading": "GitHub repo",
     "github.loggedOut": "Not signed in",

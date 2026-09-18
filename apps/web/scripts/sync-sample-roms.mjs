@@ -5,6 +5,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { SAMPLE_ROM_META } from "./sample-rom-i18n-meta.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -32,6 +33,10 @@ const outDir = path.resolve(__dirname, "../public/sample-roms");
  *   kind: SampleKind,
  *   summary: string,
  *   howto: string,
+ *   summaryEn?: string,
+ *   howtoEn?: string,
+ *   copyright?: string,
+ *   url?: string,
  * }} SampleEntry
  */
 
@@ -403,12 +408,16 @@ for (const entry of ENTRIES) {
     continue;
   }
   fs.copyFileSync(from, path.join(outDir, entry.file));
-  published.push(entry);
+  const meta = SAMPLE_ROM_META[entry.id] ?? {};
+  if (!SAMPLE_ROM_META[entry.id]) {
+    console.warn(`sample-rom: missing i18n meta for ${entry.id}`);
+  }
+  published.push({ ...entry, ...meta });
 }
 
 const catalog = {
-  version: 2,
-  note: "Provided samples are fetched on demand and not saved to the user GitHub repo. Mix of games, demos, tools, templates, and mapper tests.",
+  version: 3,
+  note: "Provided samples are fetched on demand and not saved to the user GitHub repo. Mix of games, demos, tools, templates, and mapper tests. Includes ja/en blurbs plus author/license/copyright/url.",
   roms: published,
 };
 

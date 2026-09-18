@@ -17,6 +17,14 @@ export type SampleRomEntry = {
   summary?: string;
   /** どう使うか（日本語） */
   howto?: string;
+  /** なにものか（英語） */
+  summaryEn?: string;
+  /** どう使うか（英語） */
+  howtoEn?: string;
+  /** 著作権・帰属表記（言語共通） */
+  copyright?: string;
+  /** 公式／配布元 URL */
+  url?: string;
 };
 
 export type SampleRomCatalog = {
