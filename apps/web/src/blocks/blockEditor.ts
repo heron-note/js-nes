@@ -1,4 +1,5 @@
 import * as Blockly from "blockly/core";
+import { Theme, Themes } from "blockly";
 import "blockly/blocks";
 import * as Ja from "blockly/msg/ja";
 import { defineFamiJsBlocks } from "./definitions.js";
@@ -8,12 +9,31 @@ import { FAMIJS_TOOLBOX } from "./toolbox.js";
 Blockly.setLocale(Ja as unknown as { [key: string]: string });
 defineFamiJsBlocks();
 
+/** 暗いアプリUIでもツールボックス文字が読めるダークテーマ。 */
+const FAMIJS_DARK_THEME = Theme.defineTheme("famijs_dark", {
+  name: "famijs_dark",
+  base: Themes.Classic,
+  componentStyles: {
+    workspaceBackgroundColour: "#1a1e28",
+    toolboxBackgroundColour: "#2a2e3a",
+    toolboxForegroundColour: "#e8eaf0",
+    flyoutBackgroundColour: "#222733",
+    flyoutForegroundColour: "#e8eaf0",
+    flyoutOpacity: 0.98,
+    scrollbarColour: "#5a6070",
+    scrollbarOpacity: 0.6,
+    insertionMarkerColour: "#ffffff",
+    insertionMarkerOpacity: 0.3,
+  },
+});
+
 export function initBlockEditor(
   container: HTMLElement,
   toolbox: Blockly.utils.toolbox.ToolboxDefinition = FAMIJS_TOOLBOX,
 ): Blockly.WorkspaceSvg {
   const workspace = Blockly.inject(container, {
     toolbox,
+    theme: FAMIJS_DARK_THEME,
     trashcan: true,
     zoom: { controls: true, wheel: true, startScale: 0.85 },
   });
@@ -36,153 +56,199 @@ function newBlock(workspace: Blockly.WorkspaceSvg, type: string): Blockly.Block 
   return block;
 }
 
+function plugValue(parent: Blockly.Block, inputName: string, child: Blockly.Block): void {
+  parent.getInput(inputName)!.connection!.connect(child.outputConnection!);
+}
+
+function plugStatement(parent: Blockly.Block, inputName: string, child: Blockly.Block): void {
+  parent.getInput(inputName)!.connection!.connect(child.previousConnection!);
+}
+
 /**
- * 初回表示用のサンプル：apps/web/src/main.ts の SAMPLE_SOURCE と同等の動きをするブロック構成。
- * タイル0番＝自機（キー操作）、タイル1番＝もう1体（自動で左右に動く）の2体を表示し、
- * 「複数のタイル番号を使えば複数のキャラクターを同時に出せる」ことを最初から示す。
+ * サンプル「Player」パーツ相当のブロック（field + behavior move）。
+ * createDefaultProject のコードと対になる。
  */
-export function loadDefaultWorkspace(workspace: Blockly.WorkspaceSvg): void {
+export function loadDefaultPlayerPartBlocks(workspace: Blockly.WorkspaceSvg): void {
   workspace.clear();
 
-  const letX = newBlock(workspace, "fjs_let");
-  letX.setFieldValue("x", "NAME");
-  letX.setFieldValue(120, "VALUE");
-  const letY = newBlock(workspace, "fjs_let");
-  letY.setFieldValue("y", "NAME");
-  letY.setFieldValue(100, "VALUE");
-  const letEx = newBlock(workspace, "fjs_let");
-  letEx.setFieldValue("ex", "NAME");
-  letEx.setFieldValue(200, "VALUE");
-  const letEy = newBlock(workspace, "fjs_let");
-  letEy.setFieldValue("ey", "NAME");
-  letEy.setFieldValue(50, "VALUE");
-  const letExGoingRight = newBlock(workspace, "fjs_let");
-  letExGoingRight.setFieldValue("exGoingRight", "NAME");
-  letExGoingRight.setFieldValue(0, "VALUE");
-  stack(letX, letY, letEx, letEy, letExGoingRight);
-  letX.moveBy(20, 20);
+  const fieldX = newBlock(workspace, "fjs_field_decl");
+  fieldX.setFieldValue("x", "NAME");
+  fieldX.setFieldValue(120, "VALUE");
+  const fieldY = newBlock(workspace, "fjs_field_decl");
+  fieldY.setFieldValue("y", "NAME");
+  fieldY.setFieldValue(100, "VALUE");
 
-  const initEvent = newBlock(workspace, "fjs_event_init");
-  initEvent.moveBy(20, 160);
-  const setPal = newBlock(workspace, "fjs_call_setpalette");
-  setPal.setFieldValue(0, "SLOT");
-  setPal.setFieldValue(1, "C0");
-  setPal.setFieldValue(33, "C1");
-  const setSpritePal = newBlock(workspace, "fjs_call_setspritepalette");
-  setSpritePal.setFieldValue(0, "SLOT");
-  setSpritePal.setFieldValue(1, "C0");
-  setSpritePal.setFieldValue(34, "C1");
-  const setSpritePal2 = newBlock(workspace, "fjs_call_setspritepalette");
-  setSpritePal2.setFieldValue(1, "SLOT");
-  setSpritePal2.setFieldValue(1, "C0");
-  setSpritePal2.setFieldValue(22, "C1");
-  stack(setPal, setSpritePal, setSpritePal2);
-  initEvent.getInput("DO")!.connection!.connect(setPal.previousConnection!);
+  const behavior = newBlock(workspace, "fjs_behavior_decl");
+  behavior.setFieldValue("move", "NAME");
 
-  const updateEvent = newBlock(workspace, "fjs_event_update");
-  updateEvent.moveBy(20, 300);
-
-  function ifBtnMove(name: string, varName: string, addBlockType: "fjs_assign_add" | "fjs_assign_sub"): Blockly.Block {
+  function ifBtnMove(btn: string, field: string, op: "fjs_self_field_add" | "fjs_self_field_sub"): Blockly.Block {
     const ifBlock = newBlock(workspace, "fjs_if");
     const btnBlock = newBlock(workspace, "fjs_btn");
-    btnBlock.setFieldValue(name, "NAME");
+    btnBlock.setFieldValue(btn, "NAME");
     btnBlock.setFieldValue("held", "MODE");
-    ifBlock.getInput("CONDITION")!.connection!.connect(btnBlock.outputConnection!);
-
-    const assignBlock = newBlock(workspace, addBlockType);
-    assignBlock.setFieldValue(varName, "NAME");
-    assignBlock.setFieldValue(1, "NUM");
-    ifBlock.getInput("DO")!.connection!.connect(assignBlock.previousConnection!);
+    plugValue(ifBlock, "CONDITION", btnBlock);
+    const assign = newBlock(workspace, op);
+    assign.setFieldValue(field, "FIELD");
+    assign.setFieldValue(1, "NUM");
+    plugStatement(ifBlock, "DO", assign);
     return ifBlock;
   }
 
-  const ifRight = ifBtnMove("right", "x", "fjs_assign_add");
-  const ifLeft = ifBtnMove("left", "x", "fjs_assign_sub");
-  const ifUp = ifBtnMove("up", "y", "fjs_assign_sub");
-  const ifDown = ifBtnMove("down", "y", "fjs_assign_add");
+  const ifRight = ifBtnMove("right", "x", "fjs_self_field_add");
+  const ifLeft = ifBtnMove("left", "x", "fjs_self_field_sub");
+  const ifUp = ifBtnMove("up", "y", "fjs_self_field_sub");
+  const ifDown = ifBtnMove("down", "y", "fjs_self_field_add");
 
   const ifA = newBlock(workspace, "fjs_if");
   const btnA = newBlock(workspace, "fjs_btn");
   btnA.setFieldValue("a", "NAME");
   btnA.setFieldValue("just", "MODE");
-  ifA.getInput("CONDITION")!.connection!.connect(btnA.outputConnection!);
+  plugValue(ifA, "CONDITION", btnA);
   const playTone = newBlock(workspace, "fjs_call_playtone");
   playTone.setFieldValue("0", "CHANNEL");
   playTone.setFieldValue(24, "NOTE");
   playTone.setFieldValue(10, "DURATION");
-  ifA.getInput("DO")!.connection!.connect(playTone.previousConnection!);
-
-  // もう1体（tile1）を自動で左右に往復させる（Pongのボールと同じ「フラグで方向管理」パターン）
-  const ifExGoingRight = newBlock(workspace, "fjs_if");
-  const exGoingRightGet = newBlock(workspace, "fjs_var_truthy");
-  exGoingRightGet.setFieldValue("exGoingRight", "NAME");
-  ifExGoingRight.getInput("CONDITION")!.connection!.connect(exGoingRightGet.outputConnection!);
-  const exAdd = newBlock(workspace, "fjs_assign_add");
-  exAdd.setFieldValue("ex", "NAME");
-  exAdd.setFieldValue(1, "NUM");
-  ifExGoingRight.getInput("DO")!.connection!.connect(exAdd.previousConnection!);
-  const exSub = newBlock(workspace, "fjs_assign_sub");
-  exSub.setFieldValue("ex", "NAME");
-  exSub.setFieldValue(1, "NUM");
-  ifExGoingRight.getInput("ELSE")!.connection!.connect(exSub.previousConnection!);
-
-  function ifExBoundary(op: string, compareValue: number, newFlagValue: number): Blockly.Block {
-    const ifBlock = newBlock(workspace, "fjs_if");
-    const compare = newBlock(workspace, "fjs_compare");
-    compare.setFieldValue("ex", "NAME");
-    compare.setFieldValue(op, "OP");
-    const rightNum = newBlock(workspace, "fjs_number");
-    rightNum.setFieldValue(compareValue, "VALUE");
-    compare.getInput("RIGHT")!.connection!.connect(rightNum.outputConnection!);
-    ifBlock.getInput("CONDITION")!.connection!.connect(compare.outputConnection!);
-
-    const assign = newBlock(workspace, "fjs_assign");
-    assign.setFieldValue("exGoingRight", "NAME");
-    const valueNum = newBlock(workspace, "fjs_number");
-    valueNum.setFieldValue(newFlagValue, "VALUE");
-    assign.getInput("VALUE")!.connection!.connect(valueNum.outputConnection!);
-    ifBlock.getInput("DO")!.connection!.connect(assign.previousConnection!);
-    return ifBlock;
-  }
-
-  const ifExTooFarRight = ifExBoundary(">", 240, 0);
-  const ifExTooFarLeft = ifExBoundary("<", 16, 1);
+  plugStatement(ifA, "DO", playTone);
 
   const drawSprite = newBlock(workspace, "fjs_call_drawsprite");
   drawSprite.setFieldValue(0, "ID");
   drawSprite.setFieldValue(0, "TILE");
   drawSprite.setFieldValue(0, "PALETTE");
-  const xGet = newBlock(workspace, "fjs_variable_get");
-  xGet.setFieldValue("x", "NAME");
-  const yGet = newBlock(workspace, "fjs_variable_get");
-  yGet.setFieldValue("y", "NAME");
-  drawSprite.getInput("X")!.connection!.connect(xGet.outputConnection!);
-  drawSprite.getInput("Y")!.connection!.connect(yGet.outputConnection!);
+  const xGet = newBlock(workspace, "fjs_self_field_get");
+  xGet.setFieldValue("x", "FIELD");
+  const yGet = newBlock(workspace, "fjs_self_field_get");
+  yGet.setFieldValue("y", "FIELD");
+  plugValue(drawSprite, "X", xGet);
+  plugValue(drawSprite, "Y", yGet);
 
-  const drawSprite2 = newBlock(workspace, "fjs_call_drawsprite");
-  drawSprite2.setFieldValue(1, "ID");
-  drawSprite2.setFieldValue(1, "TILE");
-  drawSprite2.setFieldValue(1, "PALETTE");
-  const exGet = newBlock(workspace, "fjs_variable_get");
-  exGet.setFieldValue("ex", "NAME");
-  const eyGet = newBlock(workspace, "fjs_variable_get");
-  eyGet.setFieldValue("ey", "NAME");
-  drawSprite2.getInput("X")!.connection!.connect(exGet.outputConnection!);
-  drawSprite2.getInput("Y")!.connection!.connect(eyGet.outputConnection!);
+  stack(ifRight, ifLeft, ifUp, ifDown, ifA, drawSprite);
+  plugStatement(behavior, "DO", ifRight);
+  stack(fieldX, fieldY, behavior);
+  fieldX.moveBy(20, 20);
+}
 
-  stack(
-    ifRight,
-    ifLeft,
-    ifUp,
-    ifDown,
-    ifA,
-    ifExGoingRight,
-    ifExTooFarRight,
-    ifExTooFarLeft,
-    drawSprite,
-    drawSprite2,
-  );
-  updateEvent.getInput("DO")!.connection!.connect(ifRight.previousConnection!);
+/**
+ * サンプル「Mover」パーツ相当のブロック（自動で左右往復）。
+ */
+export function loadDefaultMoverPartBlocks(workspace: Blockly.WorkspaceSvg): void {
+  workspace.clear();
+
+  const fieldX = newBlock(workspace, "fjs_field_decl");
+  fieldX.setFieldValue("x", "NAME");
+  fieldX.setFieldValue(200, "VALUE");
+  const fieldY = newBlock(workspace, "fjs_field_decl");
+  fieldY.setFieldValue("y", "NAME");
+  fieldY.setFieldValue(50, "VALUE");
+  const fieldGoing = newBlock(workspace, "fjs_field_decl");
+  fieldGoing.setFieldValue("goingRight", "NAME");
+  fieldGoing.setFieldValue(0, "VALUE");
+
+  const behavior = newBlock(workspace, "fjs_behavior_decl");
+  behavior.setFieldValue("move", "NAME");
+
+  const ifGoing = newBlock(workspace, "fjs_if");
+  const goingGet = newBlock(workspace, "fjs_self_field_get");
+  goingGet.setFieldValue("goingRight", "FIELD");
+  plugValue(ifGoing, "CONDITION", goingGet);
+  const xAdd = newBlock(workspace, "fjs_self_field_add");
+  xAdd.setFieldValue("x", "FIELD");
+  xAdd.setFieldValue(1, "NUM");
+  plugStatement(ifGoing, "DO", xAdd);
+  const xSub = newBlock(workspace, "fjs_self_field_sub");
+  xSub.setFieldValue("x", "FIELD");
+  xSub.setFieldValue(1, "NUM");
+  plugStatement(ifGoing, "ELSE", xSub);
+
+  function ifBoundary(op: string, value: number, flag: number): Blockly.Block {
+    const ifBlock = newBlock(workspace, "fjs_if");
+    const compare = newBlock(workspace, "fjs_compare_expr");
+    compare.setFieldValue(op, "OP");
+    const left = newBlock(workspace, "fjs_self_field_get");
+    left.setFieldValue("x", "FIELD");
+    const right = newBlock(workspace, "fjs_number");
+    right.setFieldValue(value, "VALUE");
+    plugValue(compare, "LEFT", left);
+    plugValue(compare, "RIGHT", right);
+    plugValue(ifBlock, "CONDITION", compare);
+    const assign = newBlock(workspace, "fjs_self_field_set");
+    assign.setFieldValue("goingRight", "FIELD");
+    const num = newBlock(workspace, "fjs_number");
+    num.setFieldValue(flag, "VALUE");
+    plugValue(assign, "VALUE", num);
+    plugStatement(ifBlock, "DO", assign);
+    return ifBlock;
+  }
+
+  const ifRightEdge = ifBoundary(">", 240, 0);
+  const ifLeftEdge = ifBoundary("<", 16, 1);
+
+  const drawSprite = newBlock(workspace, "fjs_call_drawsprite");
+  drawSprite.setFieldValue(1, "ID");
+  drawSprite.setFieldValue(1, "TILE");
+  drawSprite.setFieldValue(1, "PALETTE");
+  const xGet = newBlock(workspace, "fjs_self_field_get");
+  xGet.setFieldValue("x", "FIELD");
+  const yGet = newBlock(workspace, "fjs_self_field_get");
+  yGet.setFieldValue("y", "FIELD");
+  plugValue(drawSprite, "X", xGet);
+  plugValue(drawSprite, "Y", yGet);
+
+  stack(ifGoing, ifRightEdge, ifLeftEdge, drawSprite);
+  plugStatement(behavior, "DO", ifGoing);
+  stack(fieldX, fieldY, fieldGoing, behavior);
+  fieldX.moveBy(20, 20);
+}
+
+/**
+ * サンプル「Main」シーン相当のブロック。
+ */
+export function loadDefaultMainSceneBlocks(workspace: Blockly.WorkspaceSvg): void {
+  workspace.clear();
+
+  const instPlayer = newBlock(workspace, "fjs_instance_decl");
+  instPlayer.setFieldValue("player", "NAME");
+  instPlayer.setFieldValue("Player", "PARTTYPE");
+  const instMover = newBlock(workspace, "fjs_instance_decl");
+  instMover.setFieldValue("mover", "NAME");
+  instMover.setFieldValue("Mover", "PARTTYPE");
+
+  const init = newBlock(workspace, "fjs_scene_event_init");
+  const setPal = newBlock(workspace, "fjs_call_setpalette");
+  setPal.setFieldValue(0, "SLOT");
+  setPal.setFieldValue(1, "C0");
+  setPal.setFieldValue(33, "C1");
+  const setSp0 = newBlock(workspace, "fjs_call_setspritepalette");
+  setSp0.setFieldValue(0, "SLOT");
+  setSp0.setFieldValue(1, "C0");
+  setSp0.setFieldValue(34, "C1");
+  const setSp1 = newBlock(workspace, "fjs_call_setspritepalette");
+  setSp1.setFieldValue(1, "SLOT");
+  setSp1.setFieldValue(1, "C0");
+  setSp1.setFieldValue(22, "C1");
+  stack(setPal, setSp0, setSp1);
+  plugStatement(init, "DO", setPal);
+
+  const update = newBlock(workspace, "fjs_scene_event_update");
+  const callPlayer = newBlock(workspace, "fjs_call_behavior");
+  callPlayer.setFieldValue("Player", "PARTTYPE");
+  callPlayer.setFieldValue("move", "BEHAVIOR");
+  callPlayer.setFieldValue("player", "INSTANCE");
+  const callMover = newBlock(workspace, "fjs_call_behavior");
+  callMover.setFieldValue("Mover", "PARTTYPE");
+  callMover.setFieldValue("move", "BEHAVIOR");
+  callMover.setFieldValue("mover", "INSTANCE");
+  stack(callPlayer, callMover);
+  plugStatement(update, "DO", callPlayer);
+
+  stack(instPlayer, instMover);
+  instPlayer.moveBy(20, 20);
+  init.moveBy(20, 120);
+  update.moveBy(20, 280);
+}
+
+/** @deprecated Phase 6 以前のフラット構成用。パーツ/シーン用シードを使うこと。 */
+export function loadDefaultWorkspace(workspace: Blockly.WorkspaceSvg): void {
+  loadDefaultPlayerPartBlocks(workspace);
 }
 
 export { generateSource, generatePartBody, generateSceneBody };

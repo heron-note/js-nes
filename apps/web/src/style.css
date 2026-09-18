@@ -798,10 +798,55 @@ button#build-btn {
 .block-workspace {
   width: 100%;
   height: 480px;
-  background: #1e1e1e;
+  background: #1a1e28;
   border: 1px solid var(--border);
   border-radius: 6px;
   margin-top: 10px;
+  /* body の文字色が薄いツールボックスに継承されないよう遮断 */
+  color: #e8eaf0;
+}
+
+.block-workspace .injectionDiv {
+  color: #e8eaf0;
+}
+
+.block-workspace .blocklyToolbox {
+  background-color: #2a2e3a !important;
+  color: #e8eaf0 !important;
+}
+
+.block-workspace .blocklyToolboxCategoryLabel,
+.block-workspace .blocklyTreeLabel {
+  color: #e8eaf0 !important;
+}
+
+.block-workspace .blocklyFlyoutBackground {
+  fill: #222733 !important;
+}
+
+.netplay-mode {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 12px 0 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+}
+
+.netplay-mode legend {
+  padding: 0 6px;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.netplay-mode label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 
 .netplay-roles {

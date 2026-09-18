@@ -180,6 +180,20 @@
               <p class="muted">
                 サーバーなしの P2P（WebRTC）で 2コン対戦。招待コードを手動でやり取りします。
               </p>
+              <fieldset class="netplay-mode">
+                <legend>同期方式</legend>
+                <label>
+                  <input type="radio" name="netplay-mode" value="stream" checked />
+                  画面共有（Phase1・映像配信）
+                </label>
+                <label>
+                  <input type="radio" name="netplay-mode" value="lockstep" />
+                  ロックステップ（実験・ROM転送＋双方エミュ）
+                </label>
+              </fieldset>
+              <p id="netplay-mode-hint" class="muted">
+                画面共有: ゲストは ROM 不要。映像遅延あり。ロックステップ: 接続時に ROM を渡し、入力数バイトだけ同期（デシンク検知つき骨格）。
+              </p>
               <div class="netplay-roles">
                 <section class="netplay-role">
                   <h3>ホストになる（1コン）</h3>
@@ -307,24 +321,25 @@
 
                   <div id="part-editor" hidden>
                     <div class="subtabs" role="tablist" aria-label="パーツの編集方法">
-                      <button type="button" role="tab" aria-selected="true" data-subtab="code">コード</button>
-                      <button type="button" role="tab" aria-selected="false" data-subtab="blocks">ブロック</button>
+                      <button type="button" role="tab" aria-selected="true" data-subtab="blocks">ブロック</button>
+                      <button type="button" role="tab" aria-selected="false" data-subtab="code">コード</button>
                     </div>
 
-                    <div class="subpanel active" data-subpanel="code">
+                    <div class="subpanel active" data-subpanel="blocks">
+                      <p class="muted">ブロックを組み立ててゲームの動きを作ります。必要なら「コード」タブでテキストも確認できます。</p>
+                      <div id="part-block-workspace" class="block-workspace"></div>
+                      <div class="code-actions">
+                        <button id="part-blocks-build-btn" type="button">ブロックからコードを生成</button>
+                        <span id="part-blocks-status" class="muted"></span>
+                      </div>
+                    </div>
+                    <div class="subpanel" data-subpanel="code">
                       <p class="muted">
                         <code>field 名前 = 初期値;</code> と
                         <code>behavior 名前(self) { ... }</code> で書きます。仕様は
                         <code>docs/03_DSL_SPEC.md</code> を参照。
                       </p>
                       <textarea id="part-code-editor" class="dsl-textarea" spellcheck="false" rows="14"></textarea>
-                    </div>
-                    <div class="subpanel" data-subpanel="blocks">
-                      <div id="part-block-workspace" class="block-workspace"></div>
-                      <div class="code-actions">
-                        <button id="part-blocks-build-btn" type="button">ブロックからコードを生成</button>
-                        <span id="part-blocks-status" class="muted"></span>
-                      </div>
                     </div>
 
                     <h3 style="margin-top: 20px">ドット絵（このパーツ専用）</h3>
@@ -370,24 +385,25 @@
 
                   <div id="scene-editor" hidden>
                     <div class="subtabs" role="tablist" aria-label="シーンの編集方法">
-                      <button type="button" role="tab" aria-selected="true" data-subtab="code">コード</button>
-                      <button type="button" role="tab" aria-selected="false" data-subtab="blocks">ブロック</button>
+                      <button type="button" role="tab" aria-selected="true" data-subtab="blocks">ブロック</button>
+                      <button type="button" role="tab" aria-selected="false" data-subtab="code">コード</button>
                     </div>
 
-                    <div class="subpanel active" data-subpanel="code">
+                    <div class="subpanel active" data-subpanel="blocks">
+                      <p class="muted">パーツの配置と進行をブロックで組み立てます。</p>
+                      <div id="scene-block-workspace" class="block-workspace"></div>
+                      <div class="code-actions">
+                        <button id="scene-blocks-build-btn" type="button">ブロックからコードを生成</button>
+                        <span id="scene-blocks-status" class="muted"></span>
+                      </div>
+                    </div>
+                    <div class="subpanel" data-subpanel="code">
                       <p class="muted">
                         <code>instance 名前: パーツ種別;</code> と
                         <code>function init() {}</code> /
                         <code>function update() {}</code> で書きます。
                       </p>
                       <textarea id="scene-code-editor" class="dsl-textarea" spellcheck="false" rows="14"></textarea>
-                    </div>
-                    <div class="subpanel" data-subpanel="blocks">
-                      <div id="scene-block-workspace" class="block-workspace"></div>
-                      <div class="code-actions">
-                        <button id="scene-blocks-build-btn" type="button">ブロックからコードを生成</button>
-                        <span id="scene-blocks-status" class="muted"></span>
-                      </div>
                     </div>
                   </div>
                 </div>
