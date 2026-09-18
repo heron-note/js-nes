@@ -23,7 +23,7 @@ Vercel では `VITE_` を **Secret** にするとブラウザ向けに渡せず�
 1. 「GitHub でログイン」→ Device Flow（ユーザーコードを github.com/login/device に入力）
 2. 初回は Private リポジトリ `herocon-data` を自動作成
 3. `roms/*.nes` と `projects/*.famijs.json` を Contents API で読み書き
-4. トークンは `sessionStorage` のみ（タブを閉じると消える）
+4. トークンは `localStorage` に保存（ブラウザ再起動後も維持。ログアウトで削除）
 
 バイナリはユーザーブラウザ ↔ GitHub 間のみ。Pages / Vercel / Workers のディスクには残らない。
 

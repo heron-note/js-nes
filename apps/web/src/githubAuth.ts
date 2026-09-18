@@ -31,18 +31,41 @@ export type GithubUser = {
 
 export function loadStoredToken(): string | null {
   try {
-    return sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    const fromLocal = localStorage.getItem(TOKEN_STORAGE_KEY);
+    if (fromLocal) return fromLocal;
+    // 旧実装（sessionStorage）からの移行
+    const fromSession = sessionStorage.getItem(TOKEN_STORAGE_KEY);
+    if (fromSession) {
+      localStorage.setItem(TOKEN_STORAGE_KEY, fromSession);
+      sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+      return fromSession;
+    }
+    return null;
   } catch {
     return null;
   }
 }
 
 export function storeToken(token: string): void {
-  sessionStorage.setItem(TOKEN_STORAGE_KEY, token);
+  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  try {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 export function clearStoredToken(): void {
-  sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  try {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
+  try {
+    sessionStorage.removeItem(TOKEN_STORAGE_KEY);
+  } catch {
+    // ignore
+  }
 }
 
 async function relayPost(path: string, body: Record<string, unknown>): Promise<unknown> {
