@@ -1,6 +1,6 @@
 /**
  * カセット未挿入時に流す内蔵 ROM（Mapper 0）。
- * "HERON'S COMPUTER" とアプリバージョンを表示するブート画面。
+ * タイトル・バージョンに加え、INSERT A CARTRIDGE を点滅表示する。
  */
 
 const BOOT_VERSION = (import.meta.env.VITE_APP_VERSION as string | undefined) || "0.0.0";
@@ -22,9 +22,13 @@ const FONT: Record<number, FontGlyph> = {
   0x37: [0x7e, 0x06, 0x0c, 0x18, 0x30, 0x30, 0x30, 0x00], // 7
   0x38: [0x3c, 0x66, 0x66, 0x3c, 0x66, 0x66, 0x3c, 0x00], // 8
   0x39: [0x3c, 0x66, 0x66, 0x3e, 0x06, 0x0c, 0x38, 0x00], // 9
+  0x41: [0x18, 0x3c, 0x66, 0x66, 0x7e, 0x66, 0x66, 0x00], // A
   0x43: [0x3c, 0x66, 0xc0, 0xc0, 0xc0, 0x66, 0x3c, 0x00], // C
+  0x44: [0x78, 0x6c, 0x66, 0x66, 0x66, 0x6c, 0x78, 0x00], // D
   0x45: [0x7e, 0x60, 0x60, 0x7c, 0x60, 0x60, 0x7e, 0x00], // E
+  0x47: [0x3c, 0x66, 0xc0, 0xce, 0xc6, 0x66, 0x3c, 0x00], // G
   0x48: [0x66, 0x66, 0x66, 0x7e, 0x66, 0x66, 0x66, 0x00], // H
+  0x49: [0x7e, 0x18, 0x18, 0x18, 0x18, 0x18, 0x7e, 0x00], // I
   0x4d: [0x63, 0x77, 0x7f, 0x6b, 0x63, 0x63, 0x63, 0x00], // M
   0x4e: [0x63, 0x73, 0x7b, 0x6f, 0x67, 0x63, 0x63, 0x00], // N
   0x4f: [0x3c, 0x66, 0xc3, 0xc3, 0xc3, 0x66, 0x3c, 0x00], // O
@@ -49,7 +53,15 @@ function encodeAsciiTiles(text: string): number[] {
   return out;
 }
 
-/** 画面中央付近にタイトル、その下に V{version} を出す。 */
+function ppuAddrFor(row: number, text: string): number {
+  const col = Math.floor((32 - text.length) / 2);
+  return 0x2000 + row * 32 + col;
+}
+
+/**
+ * タイトル → 空けて点滅メッセージ → バージョン。
+ * 点滅は VBlank 待ちループで約 0.5 秒周期。
+ */
 export function buildBootRom(): Uint8Array {
   const rom = new Uint8Array(16 + 16384 + 8192);
   rom.set([0x4e, 0x45, 0x53, 0x1a, 0x01, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00], 0);
@@ -63,21 +75,25 @@ export function buildBootRom(): Uint8Array {
   const here = () => 0xc000 + code.length;
 
   const title = "HERON'S COMPUTER";
+  const insert = "INSERT A CARTRIDGE";
   const versionLine = `V${BOOT_VERSION}`.toUpperCase();
-  // ネームテーブル幅 32。タイトル／バージョンとも水平中央寄せ
-  const titleCol = Math.floor((32 - title.length) / 2);
-  const titlePpu = 0x2000 + 14 * 32 + titleCol;
-  const verCol = Math.floor((32 - versionLine.length) / 2);
-  const versionPpu = 0x2000 + 16 * 32 + verCol;
+
+  // row14 タイトル / row15-16 空け / row18 点滅 / row21 バージョン
+  const titlePpu = ppuAddrFor(14, title);
+  const insertPpu = ppuAddrFor(18, insert);
+  const versionPpu = ppuAddrFor(21, versionLine);
 
   const titleBytes = encodeAsciiTiles(title);
+  const insertBytes = encodeAsciiTiles(insert);
   const versionBytes = encodeAsciiTiles(versionLine);
+  const insertLen = insert.length;
 
   emit(0x78); // SEI
   emit(0xd8); // CLD
   emit(0xa2, 0xff);
   emit(0x9a);
   emit(0xa9, 0x00);
+  emit(0x85, 0x00); // frame counter $00 = 0
   emit(0x8d, 0x00, 0x20);
   emit(0x8d, 0x01, 0x20);
 
@@ -110,46 +126,84 @@ export function buildBootRom(): Uint8Array {
   emit(0xca);
   emit(0xd0, (clearLoop - (here() + 2)) & 0xff);
 
-  /** 文字列描画: PPU addr をセットして from の NUL 終端を転送。パッチ用スロットを返す。 */
-  const emitDrawString = (ppuAddr: number): { loadAt: number; beqAt: number } => {
+  /** NUL 終端文字列を PPU へ転送（アドレスは後でパッチ）。 */
+  const emitDrawString = (ppuAddr: number): number => {
     emit(0xa9, (ppuAddr >> 8) & 0xff);
     emit(0x8d, 0x06, 0x20);
     emit(0xa9, ppuAddr & 0xff);
     emit(0x8d, 0x06, 0x20);
     emit(0xa2, 0x00);
     const loadAt = code.length;
-    emit(0xbd, 0x00, 0x00); // LDA str,X
+    emit(0xbd, 0x00, 0x00);
     const beqAt = code.length;
-    emit(0xf0, 0x00); // BEQ done
+    emit(0xf0, 0x00);
     emit(0x8d, 0x07, 0x20);
     emit(0xe8);
     const bneAt = code.length;
     const loop = 0xc000 + loadAt;
     emit(0xd0, (loop - (0xc000 + bneAt + 2)) & 0xff);
-    const done = here();
-    code[beqAt + 1] = (done - (0xc000 + beqAt + 2)) & 0xff;
-    return { loadAt, beqAt };
+    code[beqAt + 1] = (here() - (0xc000 + beqAt + 2)) & 0xff;
+    return loadAt;
   };
 
-  const titleDraw = emitDrawString(titlePpu);
-  const versionDraw = emitDrawString(versionPpu);
+  const titleLoad = emitDrawString(titlePpu);
+  const versionLoad = emitDrawString(versionPpu);
 
   emit(0xa9, 0x00);
   emit(0x8d, 0x05, 0x20);
   emit(0x8d, 0x05, 0x20);
   emit(0xa9, 0x08);
   emit(0x8d, 0x01, 0x20);
-  const forever = here();
-  emit(0x4c, forever & 0xff, forever >> 8);
 
+  // --- 点滅メインループ ---
+  const mainLoop = here();
+  emit(0x2c, 0x02, 0x20); // wait VBlank
+  emit(0x10, 0xfb);
+  emit(0xe6, 0x00); // INC $00
+  emit(0xa5, 0x00);
+  emit(0x29, 0x20); // AND #$20 ≈ 32f on / 32f off
+  const beqHideAt = code.length;
+  emit(0xf0, 0x00); // BEQ hide (patched)
+
+  const insertLoad = emitDrawString(insertPpu);
+  const jmpScrollAt = code.length;
+  emit(0x4c, 0x00, 0x00); // JMP scroll (patched)
+
+  const hideAt = here();
+  code[beqHideAt + 1] = (hideAt - (0xc000 + beqHideAt + 2)) & 0xff;
+  emit(0xa9, (insertPpu >> 8) & 0xff);
+  emit(0x8d, 0x06, 0x20);
+  emit(0xa9, insertPpu & 0xff);
+  emit(0x8d, 0x06, 0x20);
+  emit(0xa2, insertLen);
+  emit(0xa9, 0x20); // space
+  const hideLoop = here();
+  emit(0x8d, 0x07, 0x20);
+  emit(0xca);
+  emit(0xd0, (hideLoop - (here() + 2)) & 0xff);
+
+  const scrollAt = here();
+  code[jmpScrollAt + 1] = scrollAt & 0xff;
+  code[jmpScrollAt + 2] = scrollAt >> 8;
+  emit(0xa9, 0x00);
+  emit(0x8d, 0x05, 0x20);
+  emit(0x8d, 0x05, 0x20);
+  emit(0x4c, mainLoop & 0xff, mainLoop >> 8);
+
+  // --- 文字列データ ---
   const titleAddr = here();
-  code[titleDraw.loadAt + 1] = titleAddr & 0xff;
-  code[titleDraw.loadAt + 2] = titleAddr >> 8;
+  code[titleLoad + 1] = titleAddr & 0xff;
+  code[titleLoad + 2] = titleAddr >> 8;
   for (const b of titleBytes) emit(b);
 
+  const insertAddr = here();
+  code[insertLoad + 1] = insertAddr & 0xff;
+  code[insertLoad + 2] = insertAddr >> 8;
+  for (const b of insertBytes) emit(b);
+
   const versionAddr = here();
-  code[versionDraw.loadAt + 1] = versionAddr & 0xff;
-  code[versionDraw.loadAt + 2] = versionAddr >> 8;
+  code[versionLoad + 1] = versionAddr & 0xff;
+  code[versionLoad + 2] = versionAddr >> 8;
   for (const b of versionBytes) emit(b);
 
   if (code.length > 0x3ffa) {
