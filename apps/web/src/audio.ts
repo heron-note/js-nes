@@ -49,20 +49,51 @@ export function noteIndexToLabel(noteIndex: number): string {
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private worker: Worker | null = null;
+  private workletSetup: Promise<void> | null = null;
+  private workletReady = false;
 
   /** main.ts起動時、ユーザー操作を待つ前に一度だけ呼ぶ（参照を保持するだけで副作用は無い）。 */
   setWorker(worker: Worker): void {
     this.worker = worker;
   }
 
-  private ensureStarted(): void {
-    if (this.ctx) return;
-    const ctx = new AudioContext();
-    this.ctx = ctx;
-    void this.setupWorklet(ctx);
+  private createContext(): AudioContext {
+    const AC =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AC) throw new Error("AudioContext 非対応");
+    return new AC();
+  }
+
+  /** iOS Safari: ユーザー操作の同期スタック内で無音を1サンプル鳴らしてアンロックする。 */
+  private unlockSync(ctx: AudioContext): void {
+    try {
+      const buffer = ctx.createBuffer(1, 1, ctx.sampleRate || 44100);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+    } catch {
+      // ignore
+    }
+  }
+
+  private ensureStarted(): AudioContext {
+    if (!this.ctx) {
+      this.ctx = this.createContext();
+    }
+    if (!this.workletSetup) {
+      this.workletSetup = this.setupWorklet(this.ctx).catch((err) => {
+        this.workletSetup = null;
+        console.error("[audio] worklet setup failed", err);
+        throw err;
+      });
+    }
+    return this.ctx;
   }
 
   private async setupWorklet(ctx: AudioContext): Promise<void> {
+    if (this.workletReady) return;
     const blob = new Blob([workletSource], { type: "application/javascript" });
     const url = URL.createObjectURL(blob);
     try {
@@ -78,13 +109,54 @@ export class AudioEngine {
     node.connect(ctx.destination);
     // worklet nodeの`.port`の所有権をそのままWorkerへ譲渡する。これ以降Workerは
     // メインスレッドを一切経由せず、このportへ直接PCMサンプルをpostMessageできる。
-    this.worker?.postMessage({ type: "audioPort", port: node.port, sampleRate: ctx.sampleRate }, [node.port]);
+    this.worker?.postMessage({ type: "audioPort", port: node.port, sampleRate: ctx.sampleRate }, [
+      node.port,
+    ]);
+    this.workletReady = true;
   }
 
-  /** ブラウザの自動再生ポリシー対応のため、ユーザー操作イベント内で呼び出す。 */
-  resume(): void {
-    this.ensureStarted();
-    void this.ctx?.resume();
+  /**
+   * モバイル自動再生ポリシー対応。必ずタップ／キー操作のイベント内から呼ぶ。
+   * iOS は await 後にユーザー活性化が切れることがあるため、同期でアンロックしてから resume する。
+   */
+  async resume(): Promise<void> {
+    const ctx = this.ensureStarted();
+    this.unlockSync(ctx);
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch (err) {
+        console.warn("[audio] resume failed", err);
+      }
+    }
+    try {
+      await this.workletSetup;
+    } catch {
+      // setupWorklet が失敗しても、再タップでリトライできるよう workletSetup はクリア済み
+    }
+    if (ctx.state === "suspended") {
+      try {
+        await ctx.resume();
+      } catch {
+        // ignore
+      }
+    }
+  }
+
+  /** まだ suspended なら再試行（パッド操作のたびに呼んでよい）。 */
+  kick(): void {
+    const ctx = this.ctx;
+    if (!ctx) {
+      void this.resume();
+      return;
+    }
+    this.unlockSync(ctx);
+    if (ctx.state === "suspended") {
+      void ctx.resume();
+    }
+    if (!this.workletReady && !this.workletSetup) {
+      void this.resume();
+    }
   }
 
   /**
@@ -93,38 +165,38 @@ export class AudioEngine {
    * noteIndexの意味はplayTone()と同じ（Pulse/Triangleは0-35の音階、Noiseのみ0-15の周期インデックス）。
    */
   previewTone(channel: 0 | 1 | 2 | 3, noteIndex: number, durationFrames: number): void {
-    this.ensureStarted();
-    const ctx = this.ctx;
-    if (!ctx) return;
-    void ctx.resume();
+    void this.resume().then(() => {
+      const ctx = this.ctx;
+      if (!ctx) return;
 
-    const now = ctx.currentTime;
-    const durationSec = Math.max(1, durationFrames) / 60;
-    const gain = ctx.createGain();
-    gain.gain.value = CHANNEL_GAIN;
-    gain.connect(ctx.destination);
-    gain.gain.setTargetAtTime(0, now + durationSec, 0.02);
+      const now = ctx.currentTime;
+      const durationSec = Math.max(1, durationFrames) / 60;
+      const gain = ctx.createGain();
+      gain.gain.value = CHANNEL_GAIN;
+      gain.connect(ctx.destination);
+      gain.gain.setTargetAtTime(0, now + durationSec, 0.02);
 
-    if (channel === 3) {
-      const bufferSize = ctx.sampleRate;
-      const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-      for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
-      const source = ctx.createBufferSource();
-      source.buffer = buffer;
-      source.loop = true;
-      source.playbackRate.value = Math.max(0.05, Math.min(4, noiseIndexToPlaybackRate(noteIndex)));
-      source.connect(gain);
-      source.start(now);
-      source.stop(now + durationSec + 0.1);
-      return;
-    }
+      if (channel === 3) {
+        const bufferSize = ctx.sampleRate;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.playbackRate.value = Math.max(0.05, Math.min(4, noiseIndexToPlaybackRate(noteIndex)));
+        source.connect(gain);
+        source.start(now);
+        source.stop(now + durationSec + 0.1);
+        return;
+      }
 
-    const osc = ctx.createOscillator();
-    osc.type = channel === 2 ? "triangle" : "square";
-    osc.frequency.value = noteIndexToFreq(noteIndex);
-    osc.connect(gain);
-    osc.start(now);
-    osc.stop(now + durationSec + 0.1);
+      const osc = ctx.createOscillator();
+      osc.type = channel === 2 ? "triangle" : "square";
+      osc.frequency.value = noteIndexToFreq(noteIndex);
+      osc.connect(gain);
+      osc.start(now);
+      osc.stop(now + durationSec + 0.1);
+    });
   }
 }

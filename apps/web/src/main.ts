@@ -120,14 +120,22 @@ const nesWorker = new NesWorkerCtor();
 const audio = new AudioEngine();
 audio.setWorker(nesWorker);
 
-let audioStarted = false;
+let audioUnlocked = false;
 function startAudioOnce(): void {
-  if (audioStarted) return;
-  audioStarted = true;
-  audio.resume();
+  void audio.resume().then(() => {
+    audioUnlocked = true;
+  });
 }
-window.addEventListener("pointerdown", startAudioOnce, { once: true });
-window.addEventListener("keydown", startAudioOnce, { once: true });
+function kickAudioFromGesture(): void {
+  if (!audioUnlocked) startAudioOnce();
+  else audio.kick();
+}
+window.addEventListener("pointerdown", kickAudioFromGesture, { capture: true });
+window.addEventListener("touchstart", kickAudioFromGesture, { capture: true, passive: true });
+window.addEventListener("keydown", kickAudioFromGesture, { capture: true });
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") audio.kick();
+});
 
 // Workerから届く最新の映像/音源メーター情報。rAFループはこれをベストエフォートで
 // 描画するだけで、Worker側の実際のペースとは無関係。
