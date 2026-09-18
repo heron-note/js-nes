@@ -1,4 +1,10 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig, loadEnv } from "vite";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8")) as { version: string };
 
 /**
  * Vercel の新 UI では VITE_ 付きを Secret にするとクライアントへ渡せない／空になることがある。
@@ -28,8 +34,8 @@ export default defineConfig(({ mode }) => {
       port: 5173,
     },
     define: {
-      // import.meta.env.VITE_* の静的置換を明示（Vercel Config / 無印変数の両方に対応）
       "import.meta.env.VITE_GITHUB_AUTH_RELAY_URL": JSON.stringify(authRelayUrl),
+      "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkg.version),
     },
     build: {
       target: "es2022",

@@ -69,6 +69,12 @@ const downloadBtn = document.querySelector<HTMLButtonElement>("#download-btn");
 const buildStatus = document.querySelector<HTMLSpanElement>("#build-status");
 const buildError = document.querySelector<HTMLPreElement>("#build-error");
 const buildSourcePreview = document.querySelector<HTMLTextAreaElement>("#build-source-preview");
+
+const appVersionEl = document.querySelector<HTMLParagraphElement>("#app-version");
+if (appVersionEl) {
+  const ver = import.meta.env.VITE_APP_VERSION || "0.0.0";
+  appVersionEl.textContent = `へろコン v${ver}`;
+}
 const cartTitleInput = document.querySelector<HTMLInputElement>("#cart-title");
 const cartAuthorInput = document.querySelector<HTMLInputElement>("#cart-author");
 const cartCanvas = document.querySelector<HTMLCanvasElement>("#cartridge-label-canvas");
