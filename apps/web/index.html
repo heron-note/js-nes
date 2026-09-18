@@ -53,50 +53,76 @@
           <div class="mode-panels">
             <!-- ===== Play ===== -->
             <div class="mode-panel active" data-mode-panel="play" role="tabpanel">
-              <h2>Play</h2>
-              <p class="muted">ゲームを遊ぶための操作と読み込みです。作る作業は Create タブへ。</p>
-
-              <h3>操作方法</h3>
-              <div class="controls-guide" id="controls-guide">
-                <div class="controls-guide-block">
-                  <h4>キーボード</h4>
-                  <div class="key-guide-row"><kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span>十字（斜め可）</span></div>
-                  <div class="key-guide-row"><kbd>Z</kbd><span>B</span></div>
-                  <div class="key-guide-row"><kbd>X</kbd><span>A</span></div>
-                  <div class="key-guide-row"><kbd>Enter</kbd><span>START</span></div>
-                  <div class="key-guide-row"><kbd>Shift</kbd><span>SELECT</span></div>
-                </div>
-                <div class="controls-guide-block">
-                  <h4>ゲームパッド（Standard）</h4>
-                  <div class="key-guide-row"><span>左スティック / 十字</span><span>移動（8方向）</span></div>
-                  <div class="key-guide-row"><kbd>B0</kbd><span>A</span></div>
-                  <div class="key-guide-row"><kbd>B1</kbd><span>B</span></div>
-                  <div class="key-guide-row"><kbd>B9</kbd><span>START</span></div>
-                  <div class="key-guide-row"><kbd>B8</kbd><span>SELECT</span></div>
-                  <p id="gamepad-status" class="muted">ゲームパッド: 未接続（ボタンを押すと検出されます）</p>
-                </div>
-                <div class="controls-guide-block">
-                  <h4>画面上のコントローラ</h4>
-                  <p class="muted" style="margin: 0">
-                    左のスティックは8方向（斜め対応）。SELECT / START / A / B はボタン。
-                    PC・タブレットでも常に表示されます。
-                  </p>
-                </div>
+              <div class="play-heading">
+                <h2>Play</h2>
+                <button
+                  type="button"
+                  id="controls-help-btn"
+                  class="help-icon-btn"
+                  aria-haspopup="dialog"
+                  aria-controls="controls-help-dialog"
+                  title="操作方法"
+                >
+                  ?
+                </button>
               </div>
 
-              <h3 style="margin-top: 24px">外部の .nes を読み込む</h3>
-              <p class="muted">
-                Mapper 0/1/2/3/4/7 対応の .nes（権利的に問題のないもの）をプレビューで実行できます。
-              </p>
-              <div class="code-actions">
-                <input id="rom-upload-input" type="file" accept=".nes" />
-                <span id="rom-upload-status" class="muted"></span>
-              </div>
+              <dialog id="controls-help-dialog" class="controls-help-dialog">
+                <form method="dialog" class="controls-help-form">
+                  <header class="controls-help-header">
+                    <h3>操作方法</h3>
+                    <button type="submit" class="help-icon-btn" value="close" aria-label="閉じる">✕</button>
+                  </header>
+                  <div class="controls-guide" id="controls-guide">
+                    <div class="controls-guide-block">
+                      <h4>キーボード</h4>
+                      <div class="key-guide-row">
+                        <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span>十字（斜め可）</span>
+                      </div>
+                      <div class="key-guide-row"><kbd>Z</kbd><span>B</span></div>
+                      <div class="key-guide-row"><kbd>X</kbd><span>A</span></div>
+                      <div class="key-guide-row"><kbd>Enter</kbd><span>START</span></div>
+                      <div class="key-guide-row"><kbd>Shift</kbd><span>SELECT</span></div>
+                    </div>
+                    <div class="controls-guide-block">
+                      <h4>ゲームパッド（Standard）</h4>
+                      <div class="key-guide-row"><span>左スティック / 十字</span><span>移動（8方向）</span></div>
+                      <div class="key-guide-row"><kbd>B0</kbd><span>A</span></div>
+                      <div class="key-guide-row"><kbd>B1</kbd><span>B</span></div>
+                      <div class="key-guide-row"><kbd>B9</kbd><span>START</span></div>
+                      <div class="key-guide-row"><kbd>B8</kbd><span>SELECT</span></div>
+                      <p id="gamepad-status" class="muted">ゲームパッド: 未接続</p>
+                    </div>
+                    <div class="controls-guide-block">
+                      <h4>画面上のコントローラ</h4>
+                      <p class="muted" style="margin: 0">
+                        左のスティックは8方向（斜め対応）。SELECT / START / A / B はボタンです。
+                      </p>
+                    </div>
+                  </div>
+                </form>
+              </dialog>
 
-              <h3 style="margin-top: 24px">オンライン対戦</h3>
+              <section class="cassette-deck" aria-label="カセットデッキ">
+                <div class="cassette-slot">
+                  <div class="cassette-body" id="cassette-body" data-inserted="false">
+                    <div class="cassette-notch" aria-hidden="true"></div>
+                    <p class="cassette-title" id="cassette-title">カセットなし</p>
+                    <p class="cassette-sub" id="cassette-sub">スロットは空いています</p>
+                  </div>
+                </div>
+                <div class="cassette-actions">
+                  <button type="button" id="cassette-insert-btn" class="cassette-btn">カセットを刺す</button>
+                  <button type="button" id="cassette-eject-btn" class="cassette-btn" disabled>カセットを抜く</button>
+                  <button type="button" id="cassette-reset-btn" class="cassette-btn cassette-btn-reset">リセット</button>
+                </div>
+                <input id="rom-upload-input" type="file" accept=".nes" hidden />
+                <p id="rom-upload-status" class="muted cassette-status" aria-live="polite"></p>
+              </section>
+
+              <h3 style="margin-top: 28px">オンライン対戦</h3>
               <p class="muted">
-                サーバーなしの P2P（WebRTC）で 2コン対戦（Phase1: 画面ストリーミング）。
-                招待コードを手動でやり取りします。
+                サーバーなしの P2P（WebRTC）で 2コン対戦。招待コードを手動でやり取りします。
               </p>
               <div class="netplay-roles">
                 <section class="netplay-role">

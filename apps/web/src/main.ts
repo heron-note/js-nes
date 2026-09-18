@@ -642,34 +642,100 @@ projectImportInput?.addEventListener("change", () => {
     });
 });
 
-// --- 外部の.nesファイルの読み込み（ホームブリュー等の動作確認用） ---
+// --- 外部ROM（カセット）の挿抜・リセット ---
 const romUploadInput = document.querySelector<HTMLInputElement>("#rom-upload-input");
-const romUploadStatus = document.querySelector<HTMLSpanElement>("#rom-upload-status");
+const romUploadStatus = document.querySelector<HTMLParagraphElement>("#rom-upload-status");
+const cassetteInsertBtn = document.querySelector<HTMLButtonElement>("#cassette-insert-btn");
+const cassetteEjectBtn = document.querySelector<HTMLButtonElement>("#cassette-eject-btn");
+const cassetteResetBtn = document.querySelector<HTMLButtonElement>("#cassette-reset-btn");
+const cassetteBody = document.querySelector<HTMLDivElement>("#cassette-body");
+const cassetteTitle = document.querySelector<HTMLParagraphElement>("#cassette-title");
+const cassetteSub = document.querySelector<HTMLParagraphElement>("#cassette-sub");
+const controlsHelpBtn = document.querySelector<HTMLButtonElement>("#controls-help-btn");
+const controlsHelpDialog = document.querySelector<HTMLDialogElement>("#controls-help-dialog");
+
+/** Play用に刺さっているカセット（外部ROM）。null のときはスモークROM扱い。 */
+let insertedCassette: { name: string; bytes: Uint8Array } | null = null;
+
+function setCassetteUi(inserted: { name: string } | null, status = ""): void {
+  if (cassetteBody) cassetteBody.dataset.inserted = inserted ? "true" : "false";
+  if (cassetteTitle) cassetteTitle.textContent = inserted ? inserted.name : "カセットなし";
+  if (cassetteSub) {
+    cassetteSub.textContent = inserted ? "スロットにカセットが刺さっています" : "スロットは空いています";
+  }
+  if (cassetteEjectBtn) cassetteEjectBtn.disabled = !inserted;
+  if (romUploadStatus) romUploadStatus.textContent = status;
+}
+
+function insertCassette(name: string, bytes: Uint8Array): void {
+  insertedCassette = { name, bytes };
+  loadRomResultHandlers.upload = (ok, message) => {
+    if (ok) {
+      lastBuiltRom = bytes;
+      downloadBtn!.disabled = false;
+      standaloneExportBtn!.disabled = false;
+      statusEl!.textContent = `カセット「${name}」を実行中`;
+      setCassetteUi({ name }, "カセットを刺しました");
+    } else {
+      insertedCassette = null;
+      setCassetteUi(null, `刺せませんでした: ${message}`);
+    }
+  };
+  loadRomInWorker(bytes, "upload");
+}
+
+function ejectCassette(): void {
+  insertedCassette = null;
+  setCassetteUi(null, "カセットを抜きました");
+  loadDemoRom();
+  statusEl!.textContent = "カセットを抜きました（動作確認用ROM）";
+}
+
+function resetConsole(): void {
+  if (insertedCassette) {
+    loadRomInWorker(insertedCassette.bytes, "upload");
+    statusEl!.textContent = `リセット: 「${insertedCassette.name}」`;
+    setCassetteUi({ name: insertedCassette.name }, "リセットしました");
+    return;
+  }
+  loadDemoRom();
+  setCassetteUi(null, "リセットしました");
+}
+
+controlsHelpBtn?.addEventListener("click", () => {
+  controlsHelpDialog?.showModal();
+});
+
+cassetteInsertBtn?.addEventListener("click", () => {
+  romUploadInput?.click();
+});
+
+cassetteEjectBtn?.addEventListener("click", () => {
+  ejectCassette();
+});
+
+cassetteResetBtn?.addEventListener("click", () => {
+  resetConsole();
+});
+
 romUploadInput?.addEventListener("change", () => {
   const file = romUploadInput.files?.[0];
-  if (!file || !romUploadStatus) return;
+  if (!file) return;
   file
     .arrayBuffer()
     .then((buf) => {
-      const bytes = new Uint8Array(buf);
-      loadRomResultHandlers.upload = (ok, message) => {
-        if (ok) {
-          lastBuiltRom = bytes;
-          downloadBtn.disabled = false;
-          standaloneExportBtn.disabled = false;
-          statusEl.textContent = `外部ROM「${file.name}」を実行中`;
-          romUploadStatus.textContent = "読み込み成功";
-        } else {
-          romUploadStatus.textContent = `読み込み失敗: ${message}`;
-        }
-      };
-      loadRomInWorker(bytes, "upload");
+      insertCassette(file.name.replace(/\.nes$/i, "") || file.name, new Uint8Array(buf));
     })
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      romUploadStatus.textContent = `読み込み失敗: ${message}`;
+      setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, `読み込み失敗: ${message}`);
+    })
+    .finally(() => {
+      romUploadInput.value = "";
     });
 });
+
+setCassetteUi(null);
 
 // --- 音源(APU)モニタ ---
 const CHANNEL_LABELS = ["Pulse1", "Pulse2", "Triangle", "Noise"] as const;
