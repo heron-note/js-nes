@@ -41,17 +41,17 @@ Concentration Room は「正確な iNES バイナリをソースなしで配布�
 
 `licenses/Concentration_Room-GPLv3.txt` を参照。ソース: https://pineight.com/nes/ / GitHub pinobatch。
 
-## C. テスト専用（マッパー検証・商用 SKU 前に再確認）
+## C. テスト専用（マッパー検証）
 
 | ファイル | 作者 | 備考 | Mapper |
 |---|---|---|---|
-| `BladeBuster.nes` | High Level Challenge! | MMC3 実機検証用。商用同梱するなら作者条件を再確認 | **4** |
 | `HolyDiver_M0.nes` … `HolyDiver_M7.nes` | Damian Yerrick | Holy Diver Batman マッパー検出デモ（対応マッパー分）。All-Permissive | 0/1/2/3/4/7 |
 
-## 意図的に入れていないもの
+## 意図的に入れていない／配布しないもの
 
 | 作品 | 理由 |
 |---|---|
+| **Blade Buster** (HLC) | 作者サイトは無料ダウンロードのみ。**第三者再配布・商用同梱の明示許可なし**。TASVideos 等の「PD」表記はコミュニティ側。加えて作者自身が音楽の権利を懸念しており、BGM が他作品由来の可能性あり → **本リポジトリのサンプル選択・同梱配布から除外**。MMC3 検証はローカル `/roms/` のみ |
 | Alter Ego (Shiru) | 移植元都合でライセンスが曖昧 |
 | HEOHdemo (Shiru) | readme に Mario スプライト言及 → 第三者 IP リスク |
 | Super Tilt Bro. | WTFPL だが Mapper 30 → エミュ非対応 |
@@ -66,8 +66,7 @@ Concentration Room は「正確な iNES バイナリをソースなしで配布�
 - NES homebrew samples by Shiru (https://shiru.untergrund.net)
 - NES software by Damian Yerrick / Pin Eight (https://pineight.com/nes/)
 - Zooming Secretary by PinWizz & Shiru (CC-BY)
-- Blade Buster by High Level Challenge! (test ROM)
 
 ## 件数
 
-現在 **26** 本（Holy Diver マッパー別・Blade Buster 含む）。
+現在 **25** 本（Blade Buster 除外後。Holy Diver マッパー別含む）。

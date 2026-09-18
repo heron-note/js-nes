@@ -102,15 +102,6 @@ const ENTRIES = [
   },
   { id: "thwaite", file: "Thwaite.nes", title: "Thwaite", author: "Damian Yerrick", license: "GPL", mapper: 0, group: "gpl" },
   {
-    id: "blade-buster",
-    file: "BladeBuster.nes",
-    title: "Blade Buster",
-    author: "High Level Challenge!",
-    license: "Freeware (test)",
-    mapper: 4,
-    group: "test",
-  },
-  {
     id: "holy-diver-m0",
     file: "HolyDiver_M0.nes",
     title: "Holy Diver Batman (M0)",
