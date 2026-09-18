@@ -74,7 +74,11 @@
   パーツは専用のドット絵タイルシートも持つ。ビルド時に全パーツ+シーンを1本のDSLソースへ結合し
   （`apps/web/src/projectBuild.ts`）、パーツごとのタイルを1本のCHR-ROMへ連結する
   （dsl-compilerの資産リンク機能、[03_DSL_SPEC.md](03_DSL_SPEC.md)参照）。
-- 描画同期は `requestAnimationFrame` に合わせて 1 フレーム（約16.6ms）分のクロックを CPU/PPU に供給する。
+- エミュレーション本体（`Nes.runFrame()`のステップ実行）は専用Web Worker（`apps/web/src/nesWorker.ts`）
+  で自走させ、メインスレッドの`requestAnimationFrame`ループ（描画・DOM操作等で詰まりうる）から
+  音声生成・配信を切り離している。メインスレッドはWorkerから届いた最新のフレームバッファを
+  ベストエフォートで`<canvas>`へ描画するだけで、音声はAudioWorkletNodeの`.port`をWorkerへ
+  直接譲渡してメインスレッドを一切経由せずに配信する（詳細は[04_EMULATOR_SPEC.md](04_EMULATOR_SPEC.md)参照）。
 - 任意で CRT 風シェーダー（走査線・にじみ）をトグル表示できるようにする（本物らしさの演出、優先度低）。
 - ソースコードを圧縮して URL ハッシュに埋め込み、ワンクリックで再生・編集できるシェアリンク機能。
 
@@ -93,7 +97,7 @@
 | ビルドツール | Vite | 高速な開発サーバーとバンドル |
 | パッケージ管理 | npm workspaces | モノレポ構成。追加ツール導入なしで完結 |
 | 画面描画 | Canvas 2D API (`putImageData`) | 256×240 のピクセル配列を直接転送。CSS `image-rendering: pixelated` で拡大表示。WebGL/CRTシェーダーは将来の拡張候補 |
-| 描画同期 | `requestAnimationFrame` | ブラウザの垂直同期に合わせてクロックを供給 |
+| エミュレーション駆動 | Web Worker（`nesWorker.ts`）+ 自己補正`setTimeout`ループ | メインスレッドの`requestAnimationFrame`からは独立して実時間で自走。描画はWorkerが吐き出す最新フレームをベストエフォートで拾うだけ |
 | サウンド | Web Audio API（`OscillatorNode`/`AudioBufferSourceNode`） | APUレジスタ状態を毎フレームポーリングして駆動（M5実装、[04_EMULATOR_SPEC.md](04_EMULATOR_SPEC.md)参照） |
 | ROM 読み込み（外部ROM検証用） | File API（`FileReader`） | 開発時の `nestest.nes` 等の読み込みに使用。配布物には他者ROMを含めない |
 | DSL パーサ | 自作の再帰下降パーサ | フル ES 文法への対応が不要なため、既存 JS パーサ（Acorn等）への依存より制御しやすい自作を採用 |
@@ -141,7 +145,7 @@ js_nes/
 │   └── web/                  # Web IDE 本体（Vite + TS）
 │       └── src/
 │           ├── editors/      # コード/ドット絵/音源エディタ UI
-│           ├── runtime/      # requestAnimationFrame ループ、Canvas描画、AudioWorklet連携
+│           ├── runtime/      # Web Workerでのエミュレーション実行、Canvas描画、AudioWorklet連携
 │           └── netplay/      # WebRTC UI（ストレッチゴール）
 ├── packages/
 │   ├── emulator-core/        # CPU / PPU / APU / Mapper0 / iNESローダー

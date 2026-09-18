@@ -6,7 +6,8 @@ import { AudioEngine, noteIndexToLabel } from "./audio.js";
 import { downloadCanvasAsPng, renderCartridgeLabel } from "./cartridgeLabel.js";
 import { exportStandaloneHtml } from "./standaloneExport.js";
 import { NetplayGuest, NetplayHost } from "./netplay.js";
-import NesWorkerCtor from "./nesWorker.ts?worker&inline";
+// TEMP DEBUG: data: URL方式(&inline)がticks/secの原因か切り分けるため、一時的に通常の別チャンク方式に変更
+import NesWorkerCtor from "./nesWorker.ts?worker";
 import type { LoadRomContext, NesWorkerOutboundMessage } from "./nesWorkerProtocol.js";
 import * as Blockly from "blockly/core";
 import { generatePartBody, generateSceneBody, initBlockEditor } from "./blocks/blockEditor.js";
@@ -91,6 +92,11 @@ const loadRomResultHandlers: Partial<Record<LoadRomContext, (ok: boolean, messag
 
 nesWorker.onmessage = (e: MessageEvent<NesWorkerOutboundMessage>) => {
   const msg = e.data;
+  // TEMP DEBUG: Workerからの計装ログをメインスレッドのconsoleへ中継（原因切り分け用）
+  if ((msg as unknown as { type: string }).type === "debugLog") {
+    console.log((msg as unknown as { text: string }).text);
+    return;
+  }
   switch (msg.type) {
     case "frame":
       latestFramebuffer = msg.framebuffer;

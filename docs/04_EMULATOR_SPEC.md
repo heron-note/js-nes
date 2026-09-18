@@ -78,9 +78,13 @@
 - **ノイズ**: 実機の15bit LFSR疑似乱数（short/longモードのタップ切り替え）で実際にビット列を生成する。
 - **DMCチャンネル**: レート/サンプルアドレス/長さレジスタ、8bitシフトレジスタによるデルタ出力、
   メモリ読み出し（Nes側からのコールバック注入）、IRQに対応。
-- **出力パイプライン**: `Apu.getMixedSample()`（実機のミキサー式による非線形合成）→
+- **出力パイプライン**: `Apu.getMixedSample()`（実機のミキサー式による非線形合成、ダウンサンプリング時は
+  直前の出力からの全CPUサイクル分の平均を取るボックスフィルタでエイリアシングノイズを抑える）→
   `Apu.drainSamples()`でPCMサンプル列を取り出し、`AudioWorkletProcessor`
   （`apps/web/src/audio-worklet-processor.js`）で再生。従来の`OscillatorNode`近似実装は廃止した。
+  `apps/web`では、`AudioWorkletNode.port`の所有権をエミュレーション実行元のWeb Worker
+  （`apps/web/src/nesWorker.ts`）へ直接譲渡しており、メインスレッドを一切経由せずに配信される
+  （上記「描画同期」節参照）。
 
 ### 未実装・既知の制約
 
@@ -151,7 +155,13 @@ Web IDEの「ビルド&実行」タブから、DSLコンパイルを経由せず
 
 ## 描画同期
 
-- `requestAnimationFrame` に合わせ、1フレーム（約16.6ms）分のCPU/PPU/APUクロックをまとめて進める。
+- `Nes.runFrame()`（1フレーム分のCPU/PPU/APUクロックをまとめて進める）は、`apps/web`では
+  メインスレッドの`requestAnimationFrame`ではなく専用Web Worker（`apps/web/src/nesWorker.ts`）が
+  自己補正`setTimeout`ループで自走させる。これはメインスレッドの描画・DOM操作等の詰まりから
+  音声生成・配信を切り離すための構成で、メインスレッドの`requestAnimationFrame`はWorkerが
+  吐き出す最新のフレームバッファをベストエフォートで`<canvas>`へ描画するだけになる
+  （詳細は[01_ARCHITECTURE.md](01_ARCHITECTURE.md)参照）。`emulator-core`パッケージ自体は
+  Worker/メインスレッドいずれで呼ばれるかを意識しない、従来どおりの同期API。
 - フレームスキップ・可変フレームレート環境への対応は将来課題（初期は固定60fps前提）。
 
 ## ROM 読み込み
