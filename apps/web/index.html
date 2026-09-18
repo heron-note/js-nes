@@ -15,8 +15,6 @@
       <div class="layout">
         <section class="screen-pane">
           <div class="screen-toolbar">
-            <button id="screenshot-btn" type="button" title="スクリーンショット">📷 スクショ</button>
-            <button id="record-btn" type="button" title="画面録画">⏺ 録画</button>
             <button id="play-mode-btn" type="button">▶ 全画面</button>
             <button id="exit-play-mode-btn" type="button" hidden>✕ 全画面を終了</button>
           </div>
@@ -38,6 +36,14 @@
             <div class="meta">
               <button type="button" data-btn="SELECT" class="pill">SELECT</button>
               <button type="button" data-btn="START" class="pill">START</button>
+            </div>
+            <div class="pad-tools">
+              <button type="button" id="screenshot-btn" class="pad-tool-btn" title="スクリーンショット" aria-label="スクリーンショット">
+                📷
+              </button>
+              <button type="button" id="record-btn" class="pad-tool-btn" title="録画" aria-label="録画">
+                ⏺
+              </button>
             </div>
             <div class="buttons">
               <button type="button" data-btn="B" class="round">B</button>

@@ -159,10 +159,8 @@ h1 .subtitle {
   cursor: pointer;
 }
 
-.screen-toolbar button.recording {
-  background: #5a2030;
-  border-color: #c05060;
-  color: #ffd0d8;
+.screen-toolbar button:active {
+  filter: brightness(1.25);
 }
 
 /* --- プレイモード（全画面。エディタを隠し、画面+パッドだけ表示） --- */
@@ -973,6 +971,40 @@ button#build-btn {
   cursor: pointer;
 }
 
+.meta .pill:active {
+  filter: brightness(1.35);
+  color: var(--text);
+}
+
+.pad-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pad-tool-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.pad-tool-btn:active {
+  filter: brightness(1.35);
+}
+
+.pad-tool-btn.recording {
+  background: #5a2030;
+  border-color: #c05060;
+}
+
 .buttons {
   display: flex;
   gap: 14px;
@@ -989,6 +1021,10 @@ button#build-btn {
   font-size: 1rem;
   touch-action: none;
   cursor: pointer;
+}
+
+.buttons .round:active {
+  filter: brightness(1.25);
 }
 
 /* --- レスポンシブ: PC/タブレット幅ではプレビューとパネルを横並びに --- */

@@ -858,14 +858,14 @@ recordBtn?.addEventListener("click", () => {
     downloadBlob(blob, `famijs-${stamp}.webm`);
     recordedChunks = [];
     mediaRecorder = null;
-    recordBtn.classList.remove("recording");
-    recordBtn.textContent = "⏺ 録画";
+    recordBtn?.classList.remove("recording");
+    if (recordBtn) recordBtn.textContent = "⏺";
     statusEl!.textContent = "録画を保存しました";
     for (const track of stream.getTracks()) track.stop();
   };
   mediaRecorder.start(250);
   recordBtn.classList.add("recording");
-  recordBtn.textContent = "⏹ 停止";
+  recordBtn.textContent = "⏹";
   statusEl!.textContent = "録画中…";
 });
 
