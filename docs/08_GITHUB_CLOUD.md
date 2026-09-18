@@ -6,14 +6,17 @@
 
 1. GitHub OAuth App（Device Flow 有効、スコープに `repo`）
 2. 稼働中の auth-relay Worker（`GITHUB_CLIENT_ID` を Worker 側 env に設定済み）
-3. フロントのビルド環境変数:
+3. フロントのビルド環境変数（**どちらか一方**）:
 
 ```bash
-# apps/web/.env または CI / Vercel の Environment Variables
+# apps/web/.env または Vercel Environment Variables（種類は Config）
 VITE_GITHUB_AUTH_RELAY_URL=https://your-auth-relay.workers.dev
+# または（Vercel が VITE_ を嫌がる場合）
+GITHUB_AUTH_RELAY_URL=https://your-auth-relay.workers.dev
 ```
 
-未設定の場合、Play 画面の「GitHub 倉庫」パネルは非表示になる。
+Vercel では `VITE_` を **Secret** にするとブラウザ向けに渡せずパネルが出ません。**Config** にしてください。
+設定後は必ず Redeploy。未設定の場合、Play 画面の「GitHub 倉庫」パネルは非表示になる。
 
 ## 動き
 
