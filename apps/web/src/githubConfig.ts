@@ -9,7 +9,7 @@ export function isGithubCloudConfigured(): boolean {
 }
 
 /** ユーザーの Private 倉庫名（無ければ自動作成）。 */
-export const CLOUD_REPO_NAME = "famijs-studio-data";
+export const CLOUD_REPO_NAME = "herocon-data";
 
 export const CLOUD_ROMS_DIR = "roms";
 export const CLOUD_PROJECTS_DIR = "projects";

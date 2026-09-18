@@ -18,7 +18,7 @@ VITE_GITHUB_AUTH_RELAY_URL=https://your-auth-relay.workers.dev
 ## 動き
 
 1. 「GitHub でログイン」→ Device Flow（ユーザーコードを github.com/login/device に入力）
-2. 初回は Private リポジトリ `famijs-studio-data` を自動作成
+2. 初回は Private リポジトリ `herocon-data` を自動作成
 3. `roms/*.nes` と `projects/*.famijs.json` を Contents API で読み書き
 4. トークンは `sessionStorage` のみ（タブを閉じると消える）
 

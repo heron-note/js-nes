@@ -1311,6 +1311,46 @@ padButtons.forEach((el) => {
   el.addEventListener("pointercancel", press(false));
 });
 
+const padWrap = document.querySelector<HTMLDivElement>(".pad-wrap");
+const padToggleBtn = document.querySelector<HTMLButtonElement>("#pad-toggle-btn");
+
+/** 全画面プレイ時、ツールバー/ステータス/パッド分を差し引いて画面を最大化する */
+function updatePlayChromeHeight(): void {
+  const app = document.querySelector<HTMLDivElement>(".app");
+  if (!app || !padWrap) return;
+  if (!app.classList.contains("play-mode")) {
+    app.style.removeProperty("--play-chrome-h");
+    return;
+  }
+  const toolbar = document.querySelector<HTMLElement>(".screen-toolbar");
+  const status = document.querySelector<HTMLElement>("#status");
+  const pane = document.querySelector<HTMLElement>(".screen-pane");
+  const gap = pane ? Number.parseFloat(getComputedStyle(pane).gap) || 12 : 12;
+  const chrome =
+    (toolbar?.offsetHeight ?? 0) +
+    (status?.offsetHeight ?? 0) +
+    padWrap.offsetHeight +
+    gap * 3 +
+    24;
+  app.style.setProperty("--play-chrome-h", `${Math.ceil(chrome)}px`);
+}
+
+function setPadCollapsed(collapsed: boolean): void {
+  if (!padWrap || !padToggleBtn) return;
+  padWrap.classList.toggle("pad-collapsed", collapsed);
+  padToggleBtn.setAttribute("aria-expanded", String(!collapsed));
+  padToggleBtn.textContent = collapsed ? "パッドを開く" : "パッドを閉じる";
+  requestAnimationFrame(() => updatePlayChromeHeight());
+}
+
+padToggleBtn?.addEventListener("click", () => {
+  setPadCollapsed(!padWrap?.classList.contains("pad-collapsed"));
+});
+
+window.addEventListener("resize", () => {
+  if (document.querySelector(".app.play-mode")) updatePlayChromeHeight();
+});
+
 // --- Play / Create モード切替 + Create 内サブタブ ---
 const modeButtons = document.querySelectorAll<HTMLButtonElement>(".mode-tabs button[data-mode]");
 const modePanels = document.querySelectorAll<HTMLDivElement>(".mode-panel[data-mode-panel]");
@@ -1360,6 +1400,8 @@ const exitPlayModeBtn = document.querySelector<HTMLButtonElement>("#exit-play-mo
 function setPlayMode(enabled: boolean): void {
   appEl?.classList.toggle("play-mode", enabled);
   if (exitPlayModeBtn) exitPlayModeBtn.hidden = !enabled;
+  // レイアウト確定後にクロム高さを測る
+  requestAnimationFrame(() => updatePlayChromeHeight());
 }
 
 if (appEl && playModeBtn && exitPlayModeBtn) {

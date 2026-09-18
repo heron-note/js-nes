@@ -40,7 +40,7 @@ export async function ensureCloudRepo(token: string, ownerLogin: string): Promis
       name: CLOUD_REPO_NAME,
       private: true,
       auto_init: true,
-      description: "FamiJS Studio のクラウド保存（ROM / プロジェクト）",
+      description: "HeroCon Studio のクラウド保存（ROM / プロジェクト）",
     }),
   });
   if (!createRes.ok) {

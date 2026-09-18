@@ -77,6 +77,11 @@ h1 .subtitle {
   background: #000;
   border: 2px solid var(--border);
   border-radius: 4px;
+  transition: max-width 0.15s ease;
+}
+
+.screen-pane:has(.pad-wrap.pad-collapsed) #screen {
+  max-width: min(100%, 960px);
 }
 
 .controls-guide {
@@ -201,15 +206,19 @@ h1 .subtitle {
 }
 
 .app.play-mode #screen {
-  width: min(96vw, 960px, calc((100dvh - 220px) * 4 / 3));
+  width: min(96vw, 960px, calc((100dvh - var(--play-chrome-h, 220px)) * 4 / 3));
   max-width: 100%;
-  max-height: calc(100dvh - 220px);
+  max-height: calc(100dvh - var(--play-chrome-h, 220px));
   height: auto;
   flex: 0 1 auto;
 }
 
-.app.play-mode .pad {
+.app.play-mode .pad-wrap {
   flex: 0 0 auto;
+  max-width: min(96vw, 512px);
+}
+
+.app.play-mode .pad {
   max-width: min(96vw, 512px);
 }
 
@@ -967,13 +976,38 @@ button#build-btn {
 }
 
 /* 仮想パッド（PC/タブレット/スマホすべてで常時表示。8方向スティック） */
+.pad-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 512px;
+}
+
+.pad-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.pad-toggle-btn:hover {
+  color: var(--text);
+}
+
+.pad-wrap.pad-collapsed .pad {
+  display: none;
+}
+
 .pad {
   display: flex;
   width: 100%;
-  max-width: 512px;
   justify-content: space-between;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   padding: 8px 4px;
   -webkit-user-select: none;
   user-select: none;
@@ -1015,14 +1049,22 @@ button#build-btn {
   background: #243040;
 }
 
-.meta {
+.pad-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.pad-center-row {
   display: flex;
   flex-direction: row;
   align-items: center;
   gap: 10px;
 }
 
-.meta .pill {
+.pad-center .pill {
   background: var(--panel);
   border: 1px solid var(--border);
   color: var(--muted);
@@ -1031,40 +1073,25 @@ button#build-btn {
   font-size: 0.7rem;
   touch-action: none;
   cursor: pointer;
+  min-width: 52px;
 }
 
-.meta .pill:active {
+.pad-center .pill.pad-aux {
+  min-width: 40px;
+  padding: 8px 10px;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.pad-center .pill:active {
   filter: brightness(1.35);
   color: var(--text);
 }
 
-.pad-tools {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.pad-tool-btn {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 1rem;
-  line-height: 1;
-  padding: 0;
-  cursor: pointer;
-  touch-action: manipulation;
-}
-
-.pad-tool-btn:active {
-  filter: brightness(1.35);
-}
-
-.pad-tool-btn.recording {
+.pad-center .pill.recording {
   background: #5a2030;
   border-color: #c05060;
+  color: #ffd0d8;
 }
 
 .buttons {
