@@ -48,11 +48,11 @@ h1 {
 
 h1 .brand-mark {
   display: block;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
-  image-rendering: pixelated;
   border-radius: 4px;
+  overflow: visible;
 }
 
 h1 .subtitle {
