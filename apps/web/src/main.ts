@@ -845,12 +845,58 @@ function loadNesFile(file: File): void {
 
 const sampleRomSelect = document.querySelector<HTMLSelectElement>("#sample-rom-select");
 const sampleRomPlayBtn = document.querySelector<HTMLButtonElement>("#sample-rom-play-btn");
+const sampleRomBlurb = document.querySelector<HTMLElement>("#sample-rom-blurb");
+const sampleRomSummary = document.querySelector<HTMLElement>("#sample-rom-summary");
+const sampleRomHowto = document.querySelector<HTMLElement>("#sample-rom-howto");
 let sampleRomEntries: SampleRomEntry[] = [];
 
-function groupLabel(group: SampleRomEntry["group"]): string {
-  if (group === "gpl") return "GPL";
-  if (group === "test") return "テスト";
-  return "サンプル";
+type SampleKind = NonNullable<SampleRomEntry["kind"]>;
+
+const KIND_ORDER: SampleKind[] = ["game", "demo", "tool", "template", "test"];
+
+function kindOf(entry: SampleRomEntry): SampleKind {
+  if (entry.kind) return entry.kind;
+  if (entry.group === "test") return "test";
+  const t = entry.title.toLowerCase();
+  if (t.includes("template")) return "template";
+  if (t.includes("editor")) return "tool";
+  if (t.includes("demo") || t.includes("new year") || t.includes("zap")) return "demo";
+  return "game";
+}
+
+function kindLabel(kind: SampleKind): string {
+  if (kind === "game") return "ゲーム（遊べる）";
+  if (kind === "demo") return "デモ（見る／試す）";
+  if (kind === "tool") return "開発ツール";
+  if (kind === "template") return "テンプレ（開発用・遊べない）";
+  return "検証（マッパー／周辺機器）";
+}
+
+function kindTag(kind: SampleKind): string {
+  if (kind === "game") return "ゲーム";
+  if (kind === "demo") return "デモ";
+  if (kind === "tool") return "ツール";
+  if (kind === "template") return "テンプレ";
+  return "検証";
+}
+
+function updateSampleRomBlurb(): void {
+  const id = sampleRomSelect?.value ?? "";
+  const entry = sampleRomEntries.find((e) => e.id === id);
+  if (!entry || !sampleRomBlurb || !sampleRomSummary || !sampleRomHowto) {
+    sampleRomBlurb?.setAttribute("hidden", "");
+    return;
+  }
+  const kind = kindOf(entry);
+  const summary =
+    entry.summary?.trim() ||
+    `${kindLabel(kind)}。作者 ${entry.author} / ${entry.license} / Mapper ${entry.mapper}`;
+  const howto =
+    entry.howto?.trim() ||
+    "操作はソフト内の案内に従ってください。テンプレ・検証ROMは遊ぶ要素がないことがあります。";
+  sampleRomSummary.textContent = `【${kindTag(kind)}】${summary}`;
+  sampleRomHowto.textContent = howto;
+  sampleRomBlurb.removeAttribute("hidden");
 }
 
 function populateSampleRomSelect(entries: SampleRomEntry[]): void {
@@ -859,25 +905,25 @@ function populateSampleRomSelect(entries: SampleRomEntry[]): void {
   sampleRomSelect.innerHTML = "";
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = "ゲームを選ぶ…";
+  placeholder.textContent = "サンプルを選ぶ…";
   sampleRomSelect.appendChild(placeholder);
 
-  const groups: SampleRomEntry["group"][] = ["sample", "gpl", "test"];
-  for (const g of groups) {
-    const inGroup = entries.filter((e) => e.group === g);
-    if (inGroup.length === 0) continue;
+  for (const kind of KIND_ORDER) {
+    const inKind = entries.filter((e) => kindOf(e) === kind);
+    if (inKind.length === 0) continue;
     const og = document.createElement("optgroup");
-    og.label = groupLabel(g);
-    for (const e of inGroup) {
+    og.label = kindLabel(kind);
+    for (const e of inKind) {
       const opt = document.createElement("option");
       opt.value = e.id;
-      opt.textContent = `${e.title} （${e.author} / ${e.license}）`;
+      opt.textContent = `${e.title} — ${e.author}`;
       og.appendChild(opt);
     }
     sampleRomSelect.appendChild(og);
   }
   sampleRomSelect.disabled = entries.length === 0;
   if (sampleRomPlayBtn) sampleRomPlayBtn.disabled = entries.length === 0;
+  updateSampleRomBlurb();
 }
 
 void loadSampleCatalog()
@@ -892,11 +938,16 @@ void loadSampleCatalog()
       sampleRomSelect.disabled = true;
     }
     if (sampleRomPlayBtn) sampleRomPlayBtn.disabled = true;
+    sampleRomBlurb?.setAttribute("hidden", "");
     setCassetteUi(
       insertedCassette ? { name: insertedCassette.name } : null,
       err instanceof Error ? err.message : String(err),
     );
   });
+
+sampleRomSelect?.addEventListener("change", () => {
+  updateSampleRomBlurb();
+});
 
 sampleRomPlayBtn?.addEventListener("click", () => {
   const id = sampleRomSelect?.value;

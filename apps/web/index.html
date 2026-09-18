@@ -141,15 +141,19 @@
                   </button>
                   <span id="netplay-badge" class="netplay-badge" hidden>未接続</span>
                 </div>
-                <div class="sample-rom-bar" aria-label="サンプルゲーム">
+                <div class="sample-rom-bar" aria-label="提供サンプル">
                   <label class="sample-rom-label" for="sample-rom-select">サンプル</label>
                   <select id="sample-rom-select" class="sample-rom-select" disabled>
                     <option value="">読み込み中…</option>
                   </select>
-                  <button type="button" id="sample-rom-play-btn" class="cassette-btn" disabled>選んで遊ぶ</button>
+                  <button type="button" id="sample-rom-play-btn" class="cassette-btn" disabled>読み込む</button>
+                </div>
+                <div id="sample-rom-blurb" class="sample-rom-blurb" hidden>
+                  <p id="sample-rom-summary" class="sample-rom-summary"></p>
+                  <p id="sample-rom-howto" class="muted sample-rom-howto"></p>
                 </div>
                 <p class="muted sample-rom-hint">
-                  選ぶたびにダウンロードして刺します。端末や GitHub 倉庫には残しません。
+                  ゲーム・デモ・開発ツール・テンプレ・検証ROMが混在します。選ぶと用途と操作の説明が出ます。都度ダウンロードで、端末／倉庫には残しません。
                 </p>
                 <input id="rom-upload-input" type="file" accept=".nes,.zip,application/zip" hidden />
                 <p id="rom-upload-status" class="muted cassette-status" aria-live="polite"></p>

@@ -5,27 +5,30 @@
 > **免責**: 各作者・配布物のライセンス表記を優先する。公開前に `licenses/` と公式ページを再確認すること。
 > 本カタログは法律助言ではない。
 
+アプリ UI では各 ROM に `kind`（game / demo / tool / template / test）と日本語の `summary` / `howto` を付与する（`apps/web/scripts/sync-sample-roms.mjs`）。
+「サンプル」の大半は完成ゲームではなく、デモ・開発ツール・テンプレ・検証 ROM も含む。
+
 ## A. 商用同梱向き（寛容ライセンス）
 
-| ファイル | 作者 | ライセンス | Mapper | 出典 |
-|---|---|---|---|---|
-| `Lawn_Mower.nes` | Shiru | **CC0** | 0 | shiru.untergrund.net / IA |
-| `Lan_Master.nes` | Shiru | **CC0** | 0 | 同上 |
-| `Chase.nes` | Shiru | **Public Domain**（ソース明記） | 0 | 同上 |
-| `Zooming_Secretary.nes` | PinWizz + Shiru | **CC-BY**（帰属必須） | 0 | 同上 |
-| `Hype.nes` | Shiru | 作者配布のフリーウェア（再配布慣行あり） | 0 | 同上 |
-| `NY2011.nes` | Shiru (+ music Gibson) | フリーウェア／帰属推奨 | 0 | 同上 |
-| `NY2020.nes` | Shiru | フリーウェア／帰属推奨 | **4** | 同上 |
-| `Russian_Roulette.nes` | Damian Yerrick | **GNU All-Permissive** | 0 | pineight.com |
-| `Zap_Ruder.nes` | Damian Yerrick | **GNU All-Permissive** | 0 | pineight.com |
-| `RHDE_Furniture_Fight.nes` | Damian Yerrick | **GNU All-Permissive** | 0 | pineight.com |
-| `Password_Save_Demo.nes` | Damian Yerrick | All-Permissive 系（README 参照） | 0 | pineight.com |
-| `NROM_Template.nes` | Damian Yerrick | テンプレ（README 参照） | 0 | pineight.com |
-| `Graphics_Editor.nes` | Damian Yerrick | ツール ROM（README 参照） | **1** | pineight.com |
-| `Sound_Effects_Editor.nes` | Damian Yerrick | ツール ROM（README 参照） | **1** | pineight.com |
-| `SNROM_Template.nes` | Damian Yerrick | テンプレ | **1** | pineight.com |
-| `UOROM_Template.nes` | Damian Yerrick | テンプレ | **2** | pineight.com |
-| `SuBoard.nes` | Shiru | フリーウェア（Famiclone キーボード向け） | 0 | shiru |
+| ファイル | 種別 | なにものか | 作者 | ライセンス | Mapper |
+|---|---|---|---|---|---|
+| `Lawn_Mower.nes` | ゲーム | 芝刈りアクション | Shiru | **CC0** | 0 |
+| `Lan_Master.nes` | ゲーム | LAN 接続パズル | Shiru | **CC0** | 0 |
+| `Chase.nes` | ゲーム | C 入門記事用の小さな追っかけ | Shiru | **Public Domain** | 0 |
+| `Zooming_Secretary.nes` | ゲーム | オフィスアクション（帰属必須） | PinWizz + Shiru | **CC-BY** | 0 |
+| `Hype.nes` | ゲーム | 短いホームブリュー | Shiru | フリーウェア | 0 |
+| `NY2011.nes` | デモ | 年賀デモ 2011 | Shiru | フリーウェア | 0 |
+| `NY2020.nes` | デモ | 年賀デモ 2020 | Shiru | フリーウェア | **4** |
+| `Russian_Roulette.nes` | デモ | Zapper トリガー読み取り | Damian Yerrick | **GNU All-Permissive** | 0 |
+| `Zap_Ruder.nes` | 検証 | Zapper 精度テスト | Damian Yerrick | **GNU All-Permissive** | 0 |
+| `RHDE_Furniture_Fight.nes` | ゲーム | 家具対戦ミニゲーム | Damian Yerrick | **GNU All-Permissive** | 0 |
+| `Password_Save_Demo.nes` | デモ | パスワードセーブの仕組み | Damian Yerrick | All-Permissive 系 | 0 |
+| `NROM_Template.nes` | テンプレ | Mapper 0 開発スケルトン | Damian Yerrick | テンプレ | 0 |
+| `Graphics_Editor.nes` | ツール | 画面上グラフィック編集 | Damian Yerrick | ツール ROM | **1** |
+| `Sound_Effects_Editor.nes` | ツール | 効果音エディタ | Damian Yerrick | ツール ROM | **1** |
+| `SNROM_Template.nes` | テンプレ | Mapper 1 開発スケルトン | Damian Yerrick | テンプレ | **1** |
+| `UOROM_Template.nes` | テンプレ | Mapper 2 開発スケルトン | Damian Yerrick | テンプレ | **2** |
+| `SuBoard.nes` | デモ | Famiclone キーボード向け | Shiru | フリーウェア | 0 |
 
 **CC-BY**: UI／README に「Zooming Secretary © PinWizz & Shiru」等のクレジットを入れる。
 
@@ -34,18 +37,18 @@
 バイナリ同梱は可能だが、ライセンス全文の同梱とソース入手手段の明示が必要。
 Concentration Room は「正確な iNES バイナリをソースなしで配布してよい」特別例外あり（配布物の README）。
 
-| ファイル | 作者 | ライセンス | Mapper |
-|---|---|---|---|
-| `Concentration_Room.nes` | Damian Yerrick | **GPLv3** + binary exception | 0 |
-| `Thwaite.nes` | Damian Yerrick | **GPL** | 0 |
+| ファイル | 種別 | なにものか | 作者 | ライセンス | Mapper |
+|---|---|---|---|---|---|
+| `Concentration_Room.nes` | ゲーム | 神経衰弱 | Damian Yerrick | **GPLv3** + binary exception | 0 |
+| `Thwaite.nes` | ゲーム | ミサイル防衛風 | Damian Yerrick | **GPL** | 0 |
 
 `licenses/Concentration_Room-GPLv3.txt` を参照。ソース: https://pineight.com/nes/ / GitHub pinobatch。
 
 ## C. テスト専用（マッパー検証）
 
-| ファイル | 作者 | 備考 | Mapper |
+| ファイル | 種別 | 備考 | Mapper |
 |---|---|---|---|
-| `HolyDiver_M0.nes` … `HolyDiver_M7.nes` | Damian Yerrick | Holy Diver Batman マッパー検出デモ（対応マッパー分）。All-Permissive | 0/1/2/3/4/7 |
+| `HolyDiver_M0.nes` … `HolyDiver_M7.nes` | 検証 | Holy Diver Batman マッパー検出デモ（対応マッパー分）。All-Permissive | 0/1/2/3/4/7 |
 
 ## 意図的に入れていない／配布しないもの
 

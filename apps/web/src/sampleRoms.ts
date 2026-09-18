@@ -1,5 +1,8 @@
 export type SampleRomGroup = "sample" | "gpl" | "test";
 
+/** 何のための ROM か（UI の分類・説明用） */
+export type SampleRomKind = "game" | "demo" | "tool" | "template" | "test";
+
 export type SampleRomEntry = {
   id: string;
   file: string;
@@ -8,6 +11,12 @@ export type SampleRomEntry = {
   license: string;
   mapper: number;
   group: SampleRomGroup;
+  /** 用途カテゴリ（無い古い catalog では推定） */
+  kind?: SampleRomKind;
+  /** なにものか（日本語） */
+  summary?: string;
+  /** どう使うか（日本語） */
+  howto?: string;
 };
 
 export type SampleRomCatalog = {

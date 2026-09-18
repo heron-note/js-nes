@@ -198,7 +198,8 @@ h1 .subtitle {
 /* パッド・ツールバー・ステータスが切れないよう、画面は縦方向を優先して縮小する */
 .app.play-mode .screen-toolbar {
   flex: 0 0 auto;
-  max-width: min(96vw, 960px);
+  max-width: 100%;
+  width: min(100%, 960px);
 }
 
 .app.play-mode #status {
@@ -206,7 +207,7 @@ h1 .subtitle {
 }
 
 .app.play-mode #screen {
-  width: min(96vw, 960px, calc((100dvh - var(--play-chrome-h, 220px)) * 4 / 3));
+  width: min(100%, 960px, calc((100dvh - var(--play-chrome-h, 220px)) * 4 / 3));
   max-width: 100%;
   max-height: calc(100dvh - var(--play-chrome-h, 220px));
   height: auto;
@@ -215,11 +216,17 @@ h1 .subtitle {
 
 .app.play-mode .pad-wrap {
   flex: 0 0 auto;
-  max-width: min(96vw, 512px);
+  /* 96vw だと screen-pane の左右 padding 分はみ出して A が切れる */
+  max-width: 100%;
+  width: 100%;
+  box-sizing: border-box;
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
 }
 
 .app.play-mode .pad {
-  max-width: min(96vw, 512px);
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .main-pane {
@@ -731,6 +738,26 @@ button.danger {
 .sample-rom-hint {
   margin: 6px 0 0;
   font-size: 0.78rem;
+}
+
+.sample-rom-blurb {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.sample-rom-summary {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+.sample-rom-howto {
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
 }
 
 
@@ -1532,6 +1559,7 @@ button#build-btn {
 .buttons {
   display: flex;
   gap: 14px;
+  flex: 0 0 auto;
 }
 
 .buttons .round {
@@ -1545,10 +1573,89 @@ button#build-btn {
   font-size: 1rem;
   touch-action: none;
   cursor: pointer;
+  flex: 0 0 auto;
 }
 
 .buttons .round:active {
   filter: brightness(1.25);
+}
+
+/* 狭い画面: スティック＋中央＋A/B が横に収まるよう縮小（A 見切れ防止） */
+@media (max-width: 480px) {
+  .screen-pane {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .app.play-mode .screen-pane {
+    padding-left: max(10px, env(safe-area-inset-left, 0px));
+    padding-right: max(10px, env(safe-area-inset-right, 0px));
+  }
+
+  .pad {
+    gap: 6px;
+    padding: 6px 0;
+  }
+
+  .stick-base {
+    width: 76px;
+    height: 76px;
+  }
+
+  .stick-knob {
+    width: 32px;
+    height: 32px;
+    margin-left: -16px;
+    margin-top: -16px;
+  }
+
+  .pad-center {
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .pad-center-row {
+    gap: 6px;
+  }
+
+  .pad-center .pill {
+    padding: 6px 8px;
+    font-size: 0.62rem;
+    min-width: 0;
+  }
+
+  .pad-center .pill.pad-aux {
+    min-width: 0;
+    padding: 6px 8px;
+    font-size: 0.85rem;
+  }
+
+  .buttons {
+    gap: 8px;
+  }
+
+  .buttons .round {
+    width: 48px;
+    height: 48px;
+    font-size: 0.9rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .stick-base {
+    width: 68px;
+    height: 68px;
+  }
+
+  .buttons .round {
+    width: 44px;
+    height: 44px;
+  }
+
+  .pad-center .pill {
+    padding: 5px 6px;
+    font-size: 0.58rem;
+  }
 }
 
 /* --- レスポンシブ: PC/タブレット幅ではプレビューとパネルを横並びに --- */
