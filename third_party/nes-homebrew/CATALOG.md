@@ -23,6 +23,9 @@
 | `NROM_Template.nes` | Damian Yerrick | テンプレ（README 参照） | 0 | pineight.com |
 | `Graphics_Editor.nes` | Damian Yerrick | ツール ROM（README 参照） | **1** | pineight.com |
 | `Sound_Effects_Editor.nes` | Damian Yerrick | ツール ROM（README 参照） | **1** | pineight.com |
+| `SNROM_Template.nes` | Damian Yerrick | テンプレ | **1** | pineight.com |
+| `UOROM_Template.nes` | Damian Yerrick | テンプレ | **2** | pineight.com |
+| `SuBoard.nes` | Shiru | フリーウェア（Famiclone キーボード向け） | 0 | shiru |
 
 **CC-BY**: UI／README に「Zooming Secretary © PinWizz & Shiru」等のクレジットを入れる。
 
@@ -38,11 +41,12 @@ Concentration Room は「正確な iNES バイナリをソースなしで配布�
 
 `licenses/Concentration_Room-GPLv3.txt` を参照。ソース: https://pineight.com/nes/ / GitHub pinobatch。
 
-## C. テスト専用（商用 SKU に入れる前に再確認）
+## C. テスト専用（マッパー検証・商用 SKU 前に再確認）
 
 | ファイル | 作者 | 備考 | Mapper |
 |---|---|---|---|
-| `BladeBuster.nes` | High Level Challenge! | MMC3 実機検証用。TASVideos 等で PD 扱い表記あり。作者サイトはフォーマルな CC0 文言なし → **テスト残置**。商用同梱するなら作者条件を再確認 | **4** |
+| `BladeBuster.nes` | High Level Challenge! | MMC3 実機検証用。商用同梱するなら作者条件を再確認 | **4** |
+| `HolyDiver_M0.nes` … `HolyDiver_M7.nes` | Damian Yerrick | Holy Diver Batman マッパー検出デモ（対応マッパー分）。All-Permissive | 0/1/2/3/4/7 |
 
 ## 意図的に入れていないもの
 
@@ -51,6 +55,8 @@ Concentration Room は「正確な iNES バイナリをソースなしで配布�
 | Alter Ego (Shiru) | 移植元都合でライセンスが曖昧 |
 | HEOHdemo (Shiru) | readme に Mario スプライト言及 → 第三者 IP リスク |
 | Super Tilt Bro. | WTFPL だが Mapper 30 → エミュ非対応 |
+| Galactor 等 itch 限定配布 | 自動化取得不可（手動追加候補） |
+| Flappy Paratroopa | MIT でも Nintendo キャラ由来の見た目リスク |
 | NC 付き作品 | 商用不可 |
 
 ## クレジット（最低限）
@@ -64,4 +70,4 @@ Concentration Room は「正確な iNES バイナリをソースなしで配布�
 
 ## 件数
 
-現在 **17** 本（テスト用 Blade Buster 含む）。
+現在 **26** 本（Holy Diver マッパー別・Blade Buster 含む）。
