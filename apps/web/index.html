@@ -123,7 +123,7 @@
                   <div class="cassette-body" id="cassette-body" data-inserted="false">
                     <div class="cassette-notch" aria-hidden="true"></div>
                     <p class="cassette-title" id="cassette-title">カセットなし</p>
-                    <p class="cassette-sub" id="cassette-sub">スロットは空いています。.nes をドロップしても刺せます</p>
+                    <p class="cassette-sub" id="cassette-sub">スロットは空いています。.nes / .zip をドロップしても刺せます</p>
                   </div>
                 </div>
                 <div class="cassette-actions">
@@ -141,7 +141,17 @@
                   </button>
                   <span id="netplay-badge" class="netplay-badge" hidden>未接続</span>
                 </div>
-                <input id="rom-upload-input" type="file" accept=".nes" hidden />
+                <div class="sample-rom-bar" aria-label="サンプルゲーム">
+                  <label class="sample-rom-label" for="sample-rom-select">サンプル</label>
+                  <select id="sample-rom-select" class="sample-rom-select" disabled>
+                    <option value="">読み込み中…</option>
+                  </select>
+                  <button type="button" id="sample-rom-play-btn" class="cassette-btn" disabled>選んで遊ぶ</button>
+                </div>
+                <p class="muted sample-rom-hint">
+                  選ぶたびにダウンロードして刺します。端末や GitHub 倉庫には残しません。
+                </p>
+                <input id="rom-upload-input" type="file" accept=".nes,.zip,application/zip" hidden />
                 <p id="rom-upload-status" class="muted cassette-status" aria-live="polite"></p>
               </section>
 

@@ -704,6 +704,36 @@ button.danger {
   min-height: 1.2em;
 }
 
+.sample-rom-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.sample-rom-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.sample-rom-select {
+  flex: 1 1 200px;
+  min-width: 160px;
+  background: #0b0d12;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 0.85rem;
+}
+
+.sample-rom-hint {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+}
+
+
 .cloud-panel {
   margin-top: 28px;
   padding-top: 8px;

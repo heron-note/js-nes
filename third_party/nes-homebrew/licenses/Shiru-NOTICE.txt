@@ -1,0 +1,11 @@
+# CC0 1.0 Universal (Shiru — Lawn Mower / Lan Master 等)
+
+作品自体は作者により CC0 と表明されているものがあります（Internet Archive / NESdev の記載）。
+パッケージ内の notes に CC0 文言が無い場合でも、公式・コミュニティの CC0 表明を根拠にしています。
+
+Creative Commons CC0 1.0:
+https://creativecommons.org/publicdomain/zero/1.0/
+
+# Public Domain (Chase)
+
+Chase ソースコメント: "Feel free to do anything you want with this code, consider it Public Domain"

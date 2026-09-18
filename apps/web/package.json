@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build && node scripts/inline-standalone.mjs",
+    "dev": "node scripts/sync-sample-roms.mjs && vite",
+    "build": "node scripts/sync-sample-roms.mjs && vite build && node scripts/inline-standalone.mjs",
+    "sync-sample-roms": "node scripts/sync-sample-roms.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
@@ -13,7 +14,8 @@
     "@js-nes/dsl-compiler": "*",
     "@js-nes/emulator-core": "*",
     "@js-nes/rom-builder": "*",
-    "blockly": "^13.3.0"
+    "blockly": "^13.3.0",
+    "fflate": "^0.8.3"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

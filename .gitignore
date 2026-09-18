@@ -3,6 +3,8 @@ dist/
 build/
 .vite/
 roms/
+third_party/nes-homebrew/_tmp/
+apps/web/public/sample-roms/
 *.local
 .env
 .DS_Store

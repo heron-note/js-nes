@@ -23,3 +23,5 @@ VITE_GITHUB_AUTH_RELAY_URL=https://your-auth-relay.workers.dev
 4. トークンは `sessionStorage` のみ（タブを閉じると消える）
 
 バイナリはユーザーブラウザ ↔ GitHub 間のみ。Pages / Vercel / Workers のディスクには残らない。
+
+提供サンプル ROM（`third_party/nes-homebrew`）はカタログから都度ダウンロードして遊ぶだけで、**ユーザー倉庫には保存しない**。

@@ -37,6 +37,8 @@ import {
   saveProjectV3ToLocalStorage,
 } from "./projectV3.js";
 import { mountCreateExplorer } from "./createExplorer.js";
+import { resolveRomFromFile } from "./romFromFile.js";
+import { fetchSampleRomBytes, loadSampleCatalog, type SampleRomEntry } from "./sampleRoms.js";
 import { buildProjectAssets, buildProjectSource, ProjectBuildError } from "./projectBuild.js";
 import {
   clearStoredToken,
@@ -750,8 +752,13 @@ const controlsHelpDialog = document.querySelector<HTMLDialogElement>("#controls-
 const screenshotBtn = document.querySelector<HTMLButtonElement>("#screenshot-btn");
 const recordBtn = document.querySelector<HTMLButtonElement>("#record-btn");
 
-/** Play用に刺さっているカセット（外部ROM）。null のときはスモークROM扱い。 */
-let insertedCassette: { name: string; bytes: Uint8Array } | null = null;
+/** Play用に刺さっているカセット。null のときはスモークROM扱い。 */
+let insertedCassette: {
+  name: string;
+  bytes: Uint8Array;
+  /** 提供サンプル（都度DL）。GitHub 倉庫には保存しない */
+  fromSample?: boolean;
+} | null = null;
 
 function formatCassetteMeta(bytes: Uint8Array): string {
   try {
@@ -770,22 +777,27 @@ function setCassetteUi(inserted: { name: string; meta?: string } | null, status 
   if (cassetteSub) {
     cassetteSub.textContent = inserted
       ? (inserted.meta ?? "スロットにカセットが刺さっています")
-      : "スロットは空いています。.nes をドロップしても刺せます";
+      : "スロットは空いています。.nes / .zip をドロップしても刺せます";
   }
   if (cassetteEjectBtn) cassetteEjectBtn.disabled = !inserted;
   if (romUploadStatus) romUploadStatus.textContent = status;
 }
 
-function insertCassette(name: string, bytes: Uint8Array): void {
+function insertCassette(
+  name: string,
+  bytes: Uint8Array,
+  statusOnOk = "カセットを刺しました",
+  opts?: { fromSample?: boolean },
+): void {
   const meta = formatCassetteMeta(bytes);
-  insertedCassette = { name, bytes };
+  insertedCassette = { name, bytes, fromSample: opts?.fromSample === true };
   loadRomResultHandlers.upload = (ok, message) => {
     if (ok) {
       lastBuiltRom = bytes;
       downloadBtn!.disabled = false;
       standaloneExportBtn!.disabled = false;
       statusEl!.textContent = `カセット「${name}」を実行中`;
-      setCassetteUi({ name, meta }, "カセットを刺しました");
+      setCassetteUi({ name, meta }, statusOnOk);
     } else {
       insertedCassette = null;
       setCassetteUi(null, `刺せませんでした: ${message}`);
@@ -816,20 +828,103 @@ function resetConsole(): void {
 }
 
 function loadNesFile(file: File): void {
-  if (!file.name.toLowerCase().endsWith(".nes")) {
-    setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, ".nes ファイルを選んでください");
-    return;
-  }
-  file
-    .arrayBuffer()
-    .then((buf) => {
-      insertCassette(file.name.replace(/\.nes$/i, "") || file.name, new Uint8Array(buf));
+  void resolveRomFromFile(file)
+    .then((rom) => {
+      const status = rom.note
+        ? rom.note
+        : rom.fromZip
+          ? `ZIP から「${rom.name}.nes」を刺しました`
+          : "カセットを刺しました";
+      insertCassette(rom.name, rom.bytes, status, { fromSample: false });
     })
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
       setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, `読み込み失敗: ${message}`);
     });
 }
+
+const sampleRomSelect = document.querySelector<HTMLSelectElement>("#sample-rom-select");
+const sampleRomPlayBtn = document.querySelector<HTMLButtonElement>("#sample-rom-play-btn");
+let sampleRomEntries: SampleRomEntry[] = [];
+
+function groupLabel(group: SampleRomEntry["group"]): string {
+  if (group === "gpl") return "GPL";
+  if (group === "test") return "テスト";
+  return "サンプル";
+}
+
+function populateSampleRomSelect(entries: SampleRomEntry[]): void {
+  if (!sampleRomSelect) return;
+  sampleRomEntries = entries;
+  sampleRomSelect.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "ゲームを選ぶ…";
+  sampleRomSelect.appendChild(placeholder);
+
+  const groups: SampleRomEntry["group"][] = ["sample", "gpl", "test"];
+  for (const g of groups) {
+    const inGroup = entries.filter((e) => e.group === g);
+    if (inGroup.length === 0) continue;
+    const og = document.createElement("optgroup");
+    og.label = groupLabel(g);
+    for (const e of inGroup) {
+      const opt = document.createElement("option");
+      opt.value = e.id;
+      opt.textContent = `${e.title} （${e.author} / ${e.license}）`;
+      og.appendChild(opt);
+    }
+    sampleRomSelect.appendChild(og);
+  }
+  sampleRomSelect.disabled = entries.length === 0;
+  if (sampleRomPlayBtn) sampleRomPlayBtn.disabled = entries.length === 0;
+}
+
+void loadSampleCatalog()
+  .then((cat) => populateSampleRomSelect(cat.roms))
+  .catch((err: unknown) => {
+    if (sampleRomSelect) {
+      sampleRomSelect.innerHTML = "";
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "サンプル一覧を取得できません";
+      sampleRomSelect.appendChild(opt);
+      sampleRomSelect.disabled = true;
+    }
+    if (sampleRomPlayBtn) sampleRomPlayBtn.disabled = true;
+    setCassetteUi(
+      insertedCassette ? { name: insertedCassette.name } : null,
+      err instanceof Error ? err.message : String(err),
+    );
+  });
+
+sampleRomPlayBtn?.addEventListener("click", () => {
+  const id = sampleRomSelect?.value;
+  const entry = sampleRomEntries.find((e) => e.id === id);
+  if (!entry) {
+    setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, "サンプルを選んでください");
+    return;
+  }
+  sampleRomPlayBtn.disabled = true;
+  setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, `「${entry.title}」をダウンロード中…`);
+  void fetchSampleRomBytes(entry)
+    .then((bytes) => {
+      // メモリ上だけで刺す。永続化・倉庫保存はしない（fromSample）
+      insertCassette(entry.title, bytes, `サンプル「${entry.title}」を刺しました（都度取得・非保存）`, {
+        fromSample: true,
+      });
+    })
+    .catch((err: unknown) => {
+      setCassetteUi(
+        insertedCassette ? { name: insertedCassette.name } : null,
+        err instanceof Error ? err.message : String(err),
+      );
+    })
+    .finally(() => {
+      sampleRomPlayBtn.disabled = sampleRomEntries.length === 0;
+    });
+});
+
 
 controlsHelpBtn?.addEventListener("click", () => {
   controlsHelpDialog?.showModal();
@@ -1033,6 +1128,12 @@ if (!isGithubCloudConfigured()) {
 
   githubRomSaveBtn?.addEventListener("click", () => {
     if (!githubToken || !githubRepo) return;
+    if (insertedCassette?.fromSample) {
+      setGithubAuthStatus(
+        "提供サンプルは倉庫に保存しません（都度ダウンロードの一時ロードです）。自分の .nes を刺してから保存してください。",
+      );
+      return;
+    }
     const bytes = insertedCassette?.bytes ?? lastBuiltRom;
     const name = insertedCassette?.name || cartTitleInput.value.trim() || "game";
     if (!bytes) {
