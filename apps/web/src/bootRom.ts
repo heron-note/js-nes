@@ -64,10 +64,11 @@ export function buildBootRom(): Uint8Array {
 
   const title = "HERON'S COMPUTER";
   const versionLine = `V${BOOT_VERSION}`.toUpperCase();
-  // タイトル行 col10 / バージョンは中央寄せ
-  const titlePpu = 0x21ca; // row14 col10
-  const verCol = Math.max(0, Math.floor((32 - versionLine.length) / 2));
-  const versionPpu = 0x2200 + verCol; // row16
+  // ネームテーブル幅 32。タイトル／バージョンとも水平中央寄せ
+  const titleCol = Math.floor((32 - title.length) / 2);
+  const titlePpu = 0x2000 + 14 * 32 + titleCol;
+  const verCol = Math.floor((32 - versionLine.length) / 2);
+  const versionPpu = 0x2000 + 16 * 32 + verCol;
 
   const titleBytes = encodeAsciiTiles(title);
   const versionBytes = encodeAsciiTiles(versionLine);
