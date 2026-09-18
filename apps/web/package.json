@@ -4,8 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/generate-pwa-icons.mjs && node scripts/generate-og-image.mjs && node scripts/sync-sample-roms.mjs && vite",
-    "build": "node scripts/generate-pwa-icons.mjs && node scripts/generate-og-image.mjs && node scripts/sync-sample-roms.mjs && vite build && node scripts/inline-standalone.mjs",
+    "dev": "node scripts/generate-pwa-icons.mjs && node scripts/sync-sample-roms.mjs && vite",
+    "build": "node scripts/generate-pwa-icons.mjs && node scripts/sync-sample-roms.mjs && vite build && node scripts/inline-standalone.mjs",
     "sync-sample-roms": "node scripts/sync-sample-roms.mjs",
     "generate-pwa-icons": "node scripts/generate-pwa-icons.mjs",
     "generate-og-image": "node scripts/generate-og-image.mjs",

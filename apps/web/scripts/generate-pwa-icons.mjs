@@ -142,7 +142,5 @@ for (const size of [180, 192, 512]) {
   console.log(`wrote ${name} (${png.length} bytes)`);
 }
 
-const og = renderOgImage();
-const ogPng = encodePng(og.rgba, og.w, og.h);
-fs.writeFileSync(path.join(outDir, "og-image.png"), ogPng);
-console.log(`wrote og-image.png (${ogPng.length} bytes)`);
+// og-image.png は scripts/generate-og-image.mjs で生成し public にコミットする。
+// ビルド時に上書きしない（note/X 向けの見える画像を壊さないため）。
