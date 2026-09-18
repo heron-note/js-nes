@@ -158,7 +158,7 @@ h1 .subtitle {
   cursor: pointer;
 }
 
-/* --- プレイモード（PC向け全画面プレイ。エディタ部分を隠して画面プレビューだけ表示） --- */
+/* --- プレイモード（全画面。エディタを隠し、画面+パッドだけ表示） --- */
 .app.play-mode .main-pane,
 .app.play-mode header,
 .app.play-mode #play-mode-btn {
@@ -170,7 +170,8 @@ h1 .subtitle {
 }
 
 .app.play-mode .layout {
-  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
 }
 
 .app.play-mode .screen-pane {
@@ -179,12 +180,32 @@ h1 .subtitle {
   border-right: none;
   justify-content: center;
   height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
 }
 
-.app.play-mode #screen,
-.app.play-mode .screen-toolbar,
+/* パッド・ツールバー・ステータスが切れないよう、画面は縦方向を優先して縮小する */
+.app.play-mode .screen-toolbar {
+  flex: 0 0 auto;
+  max-width: min(96vw, 960px);
+}
+
+.app.play-mode #status {
+  flex: 0 0 auto;
+}
+
+.app.play-mode #screen {
+  width: min(96vw, 960px, calc((100dvh - 220px) * 4 / 3));
+  max-width: 100%;
+  max-height: calc(100dvh - 220px);
+  height: auto;
+  flex: 0 1 auto;
+}
+
 .app.play-mode .pad {
-  max-width: min(96vw, 1280px);
+  flex: 0 0 auto;
+  max-width: min(96vw, 512px);
 }
 
 .main-pane {
