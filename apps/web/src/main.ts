@@ -566,9 +566,7 @@ function refreshCartridgeLabel(): void {
 // 「コンパイル済みバイト列に対する処理」であり実機起動の成否とは独立なので、
 // buildAndRun()内でloadRomInWorker()送信直後に楽観的に同期実行する。
 loadRomResultHandlers.build = (ok, message) => {
-  statusEl!.textContent = ok
-    ? "「パーツ」「シーン」タブで組み立てたプロジェクトをコンパイルして実行中"
-    : `プロジェクトの実行に失敗しました: ${message}`;
+  statusEl!.textContent = ok ? "" : `プロジェクトの実行に失敗しました: ${message}`;
 };
 
 function buildAndRun(): void {
@@ -1216,7 +1214,6 @@ if (!isGithubCloudConfigured()) {
         refreshSoundList();
         buildAndRun();
         setGithubAuthStatus("倉庫のプロジェクトを開きました");
-        setMode("create");
       })
       .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
   });
@@ -1627,22 +1624,19 @@ const modeButtons = document.querySelectorAll<HTMLButtonElement>(".mode-tabs but
 const modePanels = document.querySelectorAll<HTMLDivElement>(".mode-panel[data-mode-panel]");
 
 function setMode(mode: "play" | "create"): void {
+  // Create は準備中のため切替不可（Play 固定）
+  if (mode === "create") return;
   modeButtons.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === mode)));
   modePanels.forEach((p) => {
     const active = p.dataset.modePanel === mode;
     p.classList.toggle("active", active);
     p.hidden = !active;
   });
-  if (mode === "create") {
-    const selected = document.querySelector<HTMLButtonElement>('.tabs button[data-tab][aria-selected="true"]');
-    const target = selected?.dataset.tab;
-    if (target === "parts" && partBlockWorkspace) Blockly.svgResize(partBlockWorkspace);
-    if (target === "scenes" && sceneBlockWorkspace) Blockly.svgResize(sceneBlockWorkspace);
-  }
 }
 
 modeButtons.forEach((btn) => {
   btn.addEventListener("click", () => {
+    if (btn.disabled || btn.getAttribute("aria-disabled") === "true") return;
     const mode = btn.dataset.mode;
     if (mode === "play" || mode === "create") setMode(mode);
   });

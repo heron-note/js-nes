@@ -68,7 +68,17 @@
         <section class="main-pane">
           <nav class="mode-tabs" role="tablist" aria-label="Play または Create">
             <button type="button" role="tab" aria-selected="true" data-mode="play">Play</button>
-            <button type="button" role="tab" aria-selected="false" data-mode="create">Create</button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected="false"
+              data-mode="create"
+              disabled
+              aria-disabled="true"
+              title="準備中"
+            >
+              Create（準備中）
+            </button>
           </nav>
 
           <div class="mode-panels">
