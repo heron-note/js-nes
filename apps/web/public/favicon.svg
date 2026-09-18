@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="x³ó">
+  <!-- «»ÃÈ H“Xr	 -->
+  <rect x="2" y="3" width="28" height="26" rx="2" fill="#8B1D2C"/>
+  <!-- «»ÃÈ
+èêÖ -->
+  <rect x="5" y="4" width="22" height="2" fill="#6A131F"/>
+  <!-- -.éÙë¢¤Üêü	 -->
+  <rect x="4" y="8" width="24" height="14" rx="1" fill="#ECE5D3"/>
+  <rect x="6" y="10" width="20" height="10" fill="#FFFFFF"/>
+  <!-- éÙë-.nHÉÃÈ‡W	 -->
+  <path d="M12 12h2v2h4v-2h2v6h-2v-2h-4v2h-2z" fill="#8B1D2C"/>
+  <!-- ÛsúY³üÉÖíÃ¯G -->
+  <rect x="23" y="5" width="4" height="3" fill="#00E5FF"/>
+  <rect x="20" y="2" width="3" height="3" fill="#FF7043"/>
+  <!-- è³Í¯¿ïP´üëÉ	 -->
+  <rect x="6" y="27" width="20" height="2" fill="#E5B83B"/>
+</svg>

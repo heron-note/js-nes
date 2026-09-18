@@ -41,6 +41,18 @@ header {
 h1 {
   margin: 0;
   font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+h1 .brand-mark {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  image-rendering: pixelated;
+  border-radius: 4px;
 }
 
 h1 .subtitle {
