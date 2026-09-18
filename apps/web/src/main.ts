@@ -6,8 +6,7 @@ import { AudioEngine, noteIndexToLabel } from "./audio.js";
 import { downloadCanvasAsPng, renderCartridgeLabel } from "./cartridgeLabel.js";
 import { exportStandaloneHtml } from "./standaloneExport.js";
 import { NetplayGuest, NetplayHost } from "./netplay.js";
-// TEMP DEBUG: data: URL方式(&inline)がticks/secの原因か切り分けるため、一時的に通常の別チャンク方式に変更
-import NesWorkerCtor from "./nesWorker.ts?worker";
+import NesWorkerCtor from "./nesWorker.ts?worker&inline";
 import type { LoadRomContext, NesWorkerOutboundMessage } from "./nesWorkerProtocol.js";
 import * as Blockly from "blockly/core";
 import { generatePartBody, generateSceneBody, initBlockEditor } from "./blocks/blockEditor.js";
