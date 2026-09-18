@@ -25,6 +25,25 @@ import {
   type ProjectScene,
 } from "./project.js";
 import { buildProjectAssets, buildProjectSource, ProjectBuildError } from "./projectBuild.js";
+import {
+  clearStoredToken,
+  fetchGithubUser,
+  GithubAuthError,
+  loadStoredToken,
+  loginWithDeviceFlow,
+  type GithubUser,
+} from "./githubAuth.js";
+import {
+  ensureCloudRepo,
+  listCloudProjects,
+  listCloudRoms,
+  loadCloudFileBytes,
+  loadCloudFileText,
+  saveCloudProject,
+  saveCloudRom,
+  type CloudFileEntry,
+} from "./githubCloud.js";
+import { isGithubCloudConfigured } from "./githubConfig.js";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#screen");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
@@ -787,6 +806,209 @@ if (cassetteSlot) {
 }
 
 setCassetteUi(null);
+
+// --- GitHub クラウド（Device Flow + auth-relay） ---
+const githubCloudPanel = document.querySelector<HTMLElement>("#github-cloud-panel");
+const githubLoginBtn = document.querySelector<HTMLButtonElement>("#github-login-btn");
+const githubLogoutBtn = document.querySelector<HTMLButtonElement>("#github-logout-btn");
+const githubUserLabel = document.querySelector<HTMLParagraphElement>("#github-user-label");
+const githubAuthStatus = document.querySelector<HTMLParagraphElement>("#github-auth-status");
+const githubDeviceHint = document.querySelector<HTMLDivElement>("#github-device-hint");
+const githubUserCodeEl = document.querySelector<HTMLElement>("#github-user-code");
+const githubVerifyLink = document.querySelector<HTMLAnchorElement>("#github-verify-link");
+const githubCloudControls = document.querySelector<HTMLDivElement>("#github-cloud-controls");
+const githubRomSelect = document.querySelector<HTMLSelectElement>("#github-rom-select");
+const githubProjectSelect = document.querySelector<HTMLSelectElement>("#github-project-select");
+const githubRomLoadBtn = document.querySelector<HTMLButtonElement>("#github-rom-load-btn");
+const githubRomSaveBtn = document.querySelector<HTMLButtonElement>("#github-rom-save-btn");
+const githubRomRefreshBtn = document.querySelector<HTMLButtonElement>("#github-rom-refresh-btn");
+const githubProjectLoadBtn = document.querySelector<HTMLButtonElement>("#github-project-load-btn");
+const githubProjectSaveBtn = document.querySelector<HTMLButtonElement>("#github-project-save-btn");
+const githubProjectRefreshBtn = document.querySelector<HTMLButtonElement>("#github-project-refresh-btn");
+
+let githubToken: string | null = null;
+let githubUser: GithubUser | null = null;
+let githubRepo: { owner: string; repo: string } | null = null;
+let githubLoginAbort: AbortController | null = null;
+
+function setGithubAuthStatus(text: string): void {
+  if (githubAuthStatus) githubAuthStatus.textContent = text;
+}
+
+function fillCloudSelect(select: HTMLSelectElement | null, entries: CloudFileEntry[], emptyLabel: string): void {
+  if (!select) return;
+  select.innerHTML = "";
+  if (entries.length === 0) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = emptyLabel;
+    select.appendChild(opt);
+    return;
+  }
+  for (const e of entries) {
+    const opt = document.createElement("option");
+    opt.value = e.path;
+    opt.textContent = e.name;
+    select.appendChild(opt);
+  }
+}
+
+async function refreshCloudLists(): Promise<void> {
+  if (!githubToken || !githubRepo) return;
+  const [roms, projects] = await Promise.all([
+    listCloudRoms(githubToken, githubRepo.owner, githubRepo.repo),
+    listCloudProjects(githubToken, githubRepo.owner, githubRepo.repo),
+  ]);
+  fillCloudSelect(githubRomSelect, roms, "（カセットなし）");
+  fillCloudSelect(githubProjectSelect, projects, "（プロジェクトなし）");
+}
+
+async function activateGithubSession(token: string): Promise<void> {
+  githubToken = token;
+  githubUser = await fetchGithubUser(token);
+  githubRepo = await ensureCloudRepo(token, githubUser.login);
+  if (githubUserLabel) githubUserLabel.textContent = `@${githubUser.login}`;
+  if (githubLoginBtn) githubLoginBtn.hidden = true;
+  if (githubLogoutBtn) githubLogoutBtn.hidden = false;
+  if (githubCloudControls) githubCloudControls.hidden = false;
+  if (githubDeviceHint) githubDeviceHint.hidden = true;
+  setGithubAuthStatus(`倉庫 ${githubRepo.owner}/${githubRepo.repo} を利用中`);
+  await refreshCloudLists();
+}
+
+function clearGithubSession(): void {
+  githubLoginAbort?.abort();
+  githubLoginAbort = null;
+  githubToken = null;
+  githubUser = null;
+  githubRepo = null;
+  clearStoredToken();
+  if (githubUserLabel) githubUserLabel.textContent = "未ログイン";
+  if (githubLoginBtn) githubLoginBtn.hidden = false;
+  if (githubLogoutBtn) githubLogoutBtn.hidden = true;
+  if (githubCloudControls) githubCloudControls.hidden = true;
+  if (githubDeviceHint) githubDeviceHint.hidden = true;
+  setGithubAuthStatus("");
+}
+
+if (!isGithubCloudConfigured()) {
+  if (githubCloudPanel) githubCloudPanel.hidden = true;
+} else {
+  const existing = loadStoredToken();
+  if (existing) {
+    activateGithubSession(existing).catch((err: unknown) => {
+      clearGithubSession();
+      setGithubAuthStatus(err instanceof Error ? err.message : String(err));
+    });
+  }
+
+  githubLoginBtn?.addEventListener("click", () => {
+    githubLoginAbort?.abort();
+    githubLoginAbort = new AbortController();
+    setGithubAuthStatus("ログイン準備中…");
+    if (githubDeviceHint) githubDeviceHint.hidden = true;
+    loginWithDeviceFlow((info) => {
+      if (githubUserCodeEl) githubUserCodeEl.textContent = info.userCode;
+      if (githubVerifyLink) {
+        githubVerifyLink.href = info.verificationUri;
+        githubVerifyLink.textContent = info.verificationUri;
+      }
+      if (githubDeviceHint) githubDeviceHint.hidden = false;
+      setGithubAuthStatus("GitHub でコードを入力してください");
+    }, githubLoginAbort.signal)
+      .then((token) => activateGithubSession(token))
+      .catch((err: unknown) => {
+        if (err instanceof GithubAuthError && err.message.includes("キャンセル")) {
+          setGithubAuthStatus("ログインをキャンセルしました");
+        } else {
+          setGithubAuthStatus(err instanceof Error ? err.message : String(err));
+        }
+        if (githubDeviceHint) githubDeviceHint.hidden = true;
+      });
+  });
+
+  githubLogoutBtn?.addEventListener("click", () => {
+    clearGithubSession();
+    setGithubAuthStatus("ログアウトしました");
+  });
+
+  githubRomRefreshBtn?.addEventListener("click", () => {
+    refreshCloudLists()
+      .then(() => setGithubAuthStatus("一覧を更新しました"))
+      .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
+  });
+
+  githubProjectRefreshBtn?.addEventListener("click", () => {
+    refreshCloudLists()
+      .then(() => setGithubAuthStatus("一覧を更新しました"))
+      .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
+  });
+
+  githubRomLoadBtn?.addEventListener("click", () => {
+    const path = githubRomSelect?.value;
+    if (!path || !githubToken || !githubRepo) return;
+    setGithubAuthStatus("カセットを取得中…");
+    loadCloudFileBytes(githubToken, githubRepo.owner, githubRepo.repo, path)
+      .then((bytes) => {
+        const name = path.split("/").pop()?.replace(/\.nes$/i, "") || "cloud";
+        insertCassette(name, bytes);
+        setGithubAuthStatus(`「${name}」を倉庫から刺しました`);
+      })
+      .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
+  });
+
+  githubRomSaveBtn?.addEventListener("click", () => {
+    if (!githubToken || !githubRepo) return;
+    const bytes = insertedCassette?.bytes ?? lastBuiltRom;
+    const name = insertedCassette?.name || cartTitleInput.value.trim() || "game";
+    if (!bytes) {
+      setGithubAuthStatus("保存するカセットがありません（先に刺すかビルドしてください）");
+      return;
+    }
+    setGithubAuthStatus("カセットを保存中…");
+    saveCloudRom(githubToken, githubRepo.owner, githubRepo.repo, name, bytes)
+      .then(() => refreshCloudLists())
+      .then(() => setGithubAuthStatus(`「${name}.nes」を倉庫に保存しました`))
+      .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
+  });
+
+  githubProjectLoadBtn?.addEventListener("click", () => {
+    const path = githubProjectSelect?.value;
+    if (!path || !githubToken || !githubRepo) return;
+    setGithubAuthStatus("プロジェクトを取得中…");
+    loadCloudFileText(githubToken, githubRepo.owner, githubRepo.repo, path)
+      .then((text) => {
+        project = parseProject(text);
+        currentPartIndex = -1;
+        currentSceneIndex = -1;
+        if (project.title) cartTitleInput.value = project.title;
+        if (project.author) cartAuthorInput.value = project.author;
+        refreshPartSelect();
+        refreshSceneSelect();
+        if (project.parts.length > 0) selectPart(0);
+        if (project.scenes.length > 0) selectScene(0);
+        refreshSoundList();
+        buildAndRun();
+        setGithubAuthStatus("倉庫のプロジェクトを開きました");
+        setMode("create");
+      })
+      .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
+  });
+
+  githubProjectSaveBtn?.addEventListener("click", () => {
+    if (!githubToken || !githubRepo) return;
+    syncCurrentPartFromEditors();
+    syncCurrentSceneFromEditors();
+    project.title = cartTitleInput.value;
+    project.author = cartAuthorInput.value;
+    const name = project.title.trim() || "project";
+    setGithubAuthStatus("プロジェクトを保存中…");
+    saveCloudProject(githubToken, githubRepo.owner, githubRepo.repo, name, serializeProject(project))
+      .then(() => refreshCloudLists())
+      .then(() => setGithubAuthStatus(`「${name}」を倉庫に保存しました`))
+      .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
+  });
+}
 
 // --- スクリーンショット / 録画 ---
 function downloadBlob(blob: Blob, filename: string): void {

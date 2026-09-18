@@ -435,6 +435,68 @@ h1 .subtitle {
   min-height: 1.2em;
 }
 
+.cloud-panel {
+  margin-top: 28px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.cloud-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.cloud-heading h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.cloud-actions,
+.cloud-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.cloud-row select {
+  min-width: 180px;
+  flex: 1 1 160px;
+  background: #0b0d12;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.github-device-hint {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.github-device-hint a {
+  color: var(--accent);
+}
+
+.github-cloud-controls {
+  margin-top: 14px;
+}
+
+.github-cloud-controls h4 {
+  margin: 14px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
 .mode-panel[data-mode-panel="create"] .tabs {
   flex: 0 0 auto;
 }

@@ -128,6 +128,47 @@
                 <p id="rom-upload-status" class="muted cassette-status" aria-live="polite"></p>
               </section>
 
+              <section class="cloud-panel" id="github-cloud-panel" aria-label="GitHubクラウド">
+                <div class="cloud-heading">
+                  <h3>GitHub 倉庫</h3>
+                  <p id="github-user-label" class="muted">未ログイン</p>
+                </div>
+                <p class="muted">
+                  自分の Private リポジトリ（<code>famijs-studio-data</code>）にカセットとプロジェクトを保存できます。
+                  認証は既存の Cloudflare Workers 中継経由です。
+                </p>
+                <div class="cloud-actions">
+                  <button type="button" id="github-login-btn" class="cassette-btn">GitHub でログイン</button>
+                  <button type="button" id="github-logout-btn" class="cassette-btn" hidden>ログアウト</button>
+                </div>
+                <p id="github-auth-status" class="muted cassette-status" aria-live="polite"></p>
+                <div id="github-device-hint" class="github-device-hint" hidden>
+                  <p>
+                    GitHub を開き、コード <strong id="github-user-code"></strong> を入力してください。
+                  </p>
+                  <p>
+                    <a id="github-verify-link" href="#" target="_blank" rel="noopener noreferrer">認証ページを開く</a>
+                  </p>
+                </div>
+
+                <div id="github-cloud-controls" class="github-cloud-controls" hidden>
+                  <h4>倉庫のカセット</h4>
+                  <div class="cloud-row">
+                    <select id="github-rom-select" aria-label="倉庫のカセット"></select>
+                    <button type="button" id="github-rom-load-btn" class="cassette-btn">刺す</button>
+                    <button type="button" id="github-rom-save-btn" class="cassette-btn">今のカセットを保存</button>
+                    <button type="button" id="github-rom-refresh-btn" class="cassette-btn">更新</button>
+                  </div>
+                  <h4>倉庫のプロジェクト</h4>
+                  <div class="cloud-row">
+                    <select id="github-project-select" aria-label="倉庫のプロジェクト"></select>
+                    <button type="button" id="github-project-load-btn" class="cassette-btn">開く</button>
+                    <button type="button" id="github-project-save-btn" class="cassette-btn">今のプロジェクトを保存</button>
+                    <button type="button" id="github-project-refresh-btn" class="cassette-btn">更新</button>
+                  </div>
+                </div>
+              </section>
+
               <h3 style="margin-top: 28px">オンライン対戦</h3>
               <p class="muted">
                 サーバーなしの P2P（WebRTC）で 2コン対戦。招待コードを手動でやり取りします。

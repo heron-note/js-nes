@@ -34,6 +34,7 @@
 | 05 | [ASSET_EDITOR_SPEC.md](docs/05_ASSET_EDITOR_SPEC.md) | ドット絵エディタ・APU トラッカーの仕様 |
 | 06 | [NETPLAY_SPEC.md](docs/06_NETPLAY_SPEC.md) | WebRTC オンライン対戦の設計（ストレッチゴール） |
 | 07 | [CONTENT_PLAN.md](docs/07_CONTENT_PLAN.md) | note 連載・配布・販売の運用計画 |
+| 08 | [GITHUB_CLOUD.md](docs/08_GITHUB_CLOUD.md) | GitHub Device Flow によるクラウド保存（Workers 中継） |
 | - | [GLOSSARY.md](docs/GLOSSARY.md) | NES 関連用語集 |
 
 ## 現在のステータス
