@@ -62,33 +62,18 @@ export class Nes {
     this.cpuWrite(addr, value);
   }
 
-  // TEMP DEBUG: CPU/PPU/APUどこが重いかを切り分けるための一時的な計測用フィールド
-  debugCpuMs = 0;
-  debugPpuMs = 0;
-  debugApuMs = 0;
-  debugIrqMs = 0;
-
   /** 1フレーム分（PPUがvblankに入り1周するまで）CPU/PPUを進める。 */
   runFrame(): void {
     this.ppu.frameComplete = false;
-    this.debugCpuMs = 0;
-    this.debugPpuMs = 0;
-    this.debugApuMs = 0;
-    this.debugIrqMs = 0;
     let safety = 10_000_000;
     while (!this.ppu.frameComplete) {
       if (safety-- <= 0) {
         throw new Error("runFrame: フレームが完了しないまま安全上限に達しました（無限ループの疑い）");
       }
 
-      let t0 = performance.now();
       const cpuCycles = this.cpu.step();
-      let t1 = performance.now();
-      this.debugCpuMs += t1 - t0;
 
       for (let i = 0; i < cpuCycles; i++) this.apu.step();
-      t0 = performance.now();
-      this.debugApuMs += t0 - t1;
 
       for (let i = 0; i < cpuCycles * 3; i++) {
         this.ppu.tickOne();
@@ -100,8 +85,6 @@ export class Nes {
         // 進めてしまわないよう、ここで即座に打ち切る。残りのドットは次回のrunFrame()で処理される。
         if (this.ppu.frameComplete) break;
       }
-      t1 = performance.now();
-      this.debugPpuMs += t1 - t0;
 
       // マッパー / APU（フレームIRQ・DMC IRQ）のIRQ線（レベル型）を命令境界ごとにポーリングする。
       // MMC3のスキャンラインカウンタ等がアサートしている間、確認（$E000書き込み等）される
@@ -109,7 +92,6 @@ export class Nes {
       if (this.mapper?.irqPending() || this.apu.irqPending()) {
         this.cpu.irq();
       }
-      this.debugIrqMs += performance.now() - t1;
     }
   }
 
