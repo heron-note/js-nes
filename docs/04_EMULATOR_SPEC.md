@@ -109,14 +109,15 @@
 | 3 | CNROM | PRG固定、CHR8KB可変 |
 | 4 | MMC3 | bank-select/data間接方式、PPU A12エッジ駆動のスキャンラインIRQ（フィルタ付き）、PRG-RAM protect |
 | 7 | AxROM | PRG32KB丸ごと可変、動的シングルスクリーンミラーリング |
+| 30 | UNROM 512 | PRG16KB可変+最終固定（最大512KB）、CHR-RAMバンク、1画面ミラー |
 
-この6マッパーは、拡張マッパー非対応のホームブリュー作品の大半（NROM/UxROM/MMC1が中心）と、
-MMC3を使う本格的な作品の一部をカバーする。実際にCC0/パブリックドメインのホームブリューROM
-「Lawn Mower」（Shiru氏, Mapper 0）を読み込ませ、タイトル画面の描画とBGM再生を確認済み。
+このマッパー群は、拡張マッパー非対応のホームブリュー（NROM/UxROM/MMC1中心）、
+MMC3作品の一部、および UNROM 512（Mapper 30 / NESMaker 系）をカバーする。実際にCC0の
+「Lawn Mower」（Shiru氏, Mapper 0）や WTFPL の「Super Tilt Bro.」（sgadrat）等を収録ソフトとして同梱している。
 
 ### 未実装・既知の制約
 
-- **上記6種以外のマッパーは非対応**（未対応IDのROMを読み込むと`createMapper()`が
+- **上記以外のマッパーは非対応**（未対応IDのROMを読み込むと`createMapper()`が
   例外を投げ、明示的にエラー表示される）。特に以下は未対応:
   - VRC1/VRC2/VRC3/VRC4/VRC6/VRC7（コナミ）
   - MMC5（拡張音源・大容量バンク切り替え）
@@ -130,7 +131,7 @@ MMC3を使う本格的な作品の一部をカバーする。実際にCC0/パブ
 ## 外部.nesファイルの読み込み
 
 Web IDEの「ビルド&実行」タブから、DSLコンパイルを経由せず任意の`.nes`ファイルを直接読み込んで
-実行できる（`apps/web/src/main.ts`のROMアップロード機能）。対応マッパー（上表の6種）の範囲であれば、
+実行できる（`apps/web/src/main.ts`のROMアップロード機能）。対応マッパー（上表）の範囲であれば、
 ホームブリュー等の第三者制作ROMの動作確認に使える。著作権上、市販ROMの吸い出しデータを読み込ませる
 用途は想定していない（[00_CONCEPT.md](00_CONCEPT.md)の非ゴール参照）。
 

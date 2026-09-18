@@ -1,6 +1,7 @@
 # 同梱 ROM カタログ
 
-エミュ対応マッパー: **0 / 1 / 2 / 3 / 4 / 7**（本リポジトリ現状）。
+エミュ対応マッパー: **0 / 1 / 2 / 3 / 4 / 7 / 30**（本リポジトリ現状）。
+
 
 > **免責**: 各作者・配布物のライセンス表記を優先する。公開前に `licenses/` と公式ページを再確認すること。
 > 本カタログは法律助言ではない。
@@ -16,6 +17,7 @@
 | `Lan_Master.nes` | ゲーム | LAN 接続パズル | Shiru | **CC0** | 0 |
 | `Chase.nes` | ゲーム | C 入門記事用の小さな追っかけ | Shiru | **Public Domain** | 0 |
 | `Zooming_Secretary.nes` | ゲーム | オフィスアクション（帰属必須） | PinWizz + Shiru | **CC-BY** | 0 |
+| `Super_Tilt_Bro.nes` | ゲーム | スマブラ風対戦（同梱は公開 UNROM=Mapper2 版。itch 公式 Mapper30 もロード可） | sgadrat | **WTFPL** | 2 |
 | `Hype.nes` | ゲーム | 短いホームブリュー | Shiru | フリーウェア | 0 |
 | `NY2011.nes` | デモ | 年賀デモ 2011 | Shiru | フリーウェア | 0 |
 | `NY2020.nes` | デモ | 年賀デモ 2020 | Shiru | フリーウェア | **4** |
@@ -57,7 +59,6 @@ Concentration Room は「正確な iNES バイナリをソースなしで配布�
 | **Blade Buster** (HLC) | 作者サイトは無料ダウンロードのみ。**第三者再配布・商用同梱の明示許可なし**。TASVideos 等の「PD」表記はコミュニティ側。加えて作者自身が音楽の権利を懸念しており、BGM が他作品由来の可能性あり → **本リポジトリのサンプル選択・同梱配布から除外**。MMC3 検証はローカル `/roms/` のみ |
 | Alter Ego (Shiru) | 移植元都合でライセンスが曖昧 |
 | HEOHdemo (Shiru) | readme に Mario スプライト言及 → 第三者 IP リスク |
-| Super Tilt Bro. | WTFPL だが Mapper 30 → エミュ非対応 |
 | Galactor 等 itch 限定配布 | 自動化取得不可（手動追加候補） |
 | Flappy Paratroopa | MIT でも Nintendo キャラ由来の見た目リスク |
 | NC 付き作品 | 商用不可 |
@@ -69,7 +70,9 @@ Concentration Room は「正確な iNES バイナリをソースなしで配布�
 - NES homebrew samples by Shiru (https://shiru.untergrund.net)
 - NES software by Damian Yerrick / Pin Eight (https://pineight.com/nes/)
 - Zooming Secretary by PinWizz & Shiru (CC-BY)
+- Super Tilt Bro. by sgadrat (WTFPL) — https://sgadrat.itch.io/super-tilt-bro /
+  https://github.com/sgadrat/super-tilt-bro
 
 ## 件数
 
-現在 **25** 本（Blade Buster 除外後。Holy Diver マッパー別含む）。
+現在 **26** 本（Holy Diver マッパー別含む）。

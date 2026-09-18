@@ -86,6 +86,18 @@ const ENTRIES = [
     howto: "十字キーで移動、障害や上司をかわしながら仕事をこなす。",
   },
   {
+    id: "super-tilt-bro",
+    file: "Super_Tilt_Bro.nes",
+    title: "Super Tilt Bro.",
+    author: "sgadrat",
+    license: "WTFPL",
+    mapper: 2,
+    group: "sample",
+    kind: "game",
+    summary: "スマブラ風の対戦アクション。同梱は公開配布の UNROM（Mapper 2）版。公式 itch の Mapper 30 版もロード可。",
+    howto: "十字キーで移動、A/B で攻撃・ジャンプ。2人対戦向け。メニューは画面案内に従う。",
+  },
+  {
     id: "hype",
     file: "Hype.nes",
     title: "Hype",

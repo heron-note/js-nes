@@ -1,6 +1,7 @@
 import type { INesRom, Mirroring } from "./ines.js";
 import { NromMapper } from "./mappers/nrom.js";
 import { UxromMapper } from "./mappers/uxrom.js";
+import { Unrom512Mapper } from "./mappers/unrom512.js";
 import { CnromMapper } from "./mappers/cnrom.js";
 import { AxromMapper } from "./mappers/axrom.js";
 import { Mmc1Mapper } from "./mappers/mmc1.js";
@@ -55,6 +56,8 @@ export function createMapper(rom: INesRom): Mapper {
       return new Mmc3Mapper(rom.prgRom, rom.chrRom, rom.chrIsRam);
     case 7:
       return new AxromMapper(rom.prgRom, rom.chrRom, rom.chrIsRam);
+    case 30:
+      return new Unrom512Mapper(rom.prgRom, rom.chrRom, rom.chrIsRam);
     default:
       throw new Error(`Mapper ${rom.mapperId} は未対応です`);
   }

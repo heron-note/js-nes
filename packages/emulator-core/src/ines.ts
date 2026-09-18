@@ -49,7 +49,8 @@ export function parseINes(data: Uint8Array): INesRom {
   offset += prgSize;
 
   const chrIsRam = chrBanks === 0;
-  const chrSize = chrIsRam ? 8192 : chrBanks * 8192;
+  // Mapper 30 (UNROM 512) の iNES 既定は 32KB CHR-RAM（NES 2.0 未解釈時）。
+  const chrSize = chrIsRam ? (mapperId === 30 ? 0x8000 : 8192) : chrBanks * 8192;
   const chrRom = chrIsRam ? new Uint8Array(chrSize) : data.slice(offset, offset + chrSize);
 
   if (prgRom.length !== prgSize) {
