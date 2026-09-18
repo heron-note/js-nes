@@ -763,8 +763,9 @@ button#build-btn {
 
 .meta {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
 
 .meta .pill {
