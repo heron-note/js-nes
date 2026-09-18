@@ -162,4 +162,15 @@ describe("Mmc1Mapper (Mapper 1)", () => {
     writeNametableByte(0x2000, 0x22);
     expect(readNametableByte(0x2400)).toBe(0x22); // horizontal: $2000と$2400が同バンク
   });
+
+  it("PRG 16KB のみの ROM は 32KB モードでも $C000 側がミラーされる", () => {
+    const nes = new Nes();
+    const prgRom = buildMmc1PrgRom(1);
+    prgRom[0x1234] = 0x5a;
+    nes.loadRom(buildTestRom({ mapperId: 1, prgRom }));
+    // control を PRG モード 0（32KB）へ
+    mmc1Write(nes, 0x8000, 0x00);
+    expect(nes.readCpuMemory(0x8000 + 0x1234)).toBe(0x5a);
+    expect(nes.readCpuMemory(0xc000 + 0x1234)).toBe(0x5a);
+  });
 });

@@ -100,6 +100,30 @@ describe("Cpu6502", () => {
     expect(() => cpu.step()).toThrow(/Unsupported opcode/);
   });
 
+  it("AXS/SBX (0xCB) sets X from (A&X)-imm and updates N/Z/C", () => {
+    // LDA #$FF ; LDX #$0F ; AXS #$01  => X = ($FF & $0F) - 1 = $0E, C=1
+    const { cpu } = makeCpu([0xa9, 0xff, 0xa2, 0x0f, 0xcb, 0x01]);
+    cpu.step();
+    cpu.step();
+    const cycles = cpu.step();
+    expect(cycles).toBe(2);
+    expect(cpu.x).toBe(0x0e);
+    expect(cpu.a).toBe(0xff);
+    expect(cpu.p & FLAG.C).toBeTruthy();
+    expect(cpu.p & FLAG.Z).toBeFalsy();
+  });
+
+  it("AXS clears C when (A&X) < imm", () => {
+    // LDA #$03 ; LDX #$03 ; AXS #$10  => X = 3-16 = $F3, C=0, N=1
+    const { cpu } = makeCpu([0xa9, 0x03, 0xa2, 0x03, 0xcb, 0x10]);
+    cpu.step();
+    cpu.step();
+    cpu.step();
+    expect(cpu.x).toBe(0xf3);
+    expect(cpu.p & FLAG.C).toBeFalsy();
+    expect(cpu.p & FLAG.N).toBeTruthy();
+  });
+
   it("irq() pushes PC/P, sets the I flag, and jumps to the $FFFE vector", () => {
     const { cpu, bus } = makeCpu([0xea]); // NOP（IRQ発生前のPC確認用）
     bus.mem[0xfffe] = 0x00;

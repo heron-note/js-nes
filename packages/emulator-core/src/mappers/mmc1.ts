@@ -50,6 +50,10 @@ export class Mmc1Mapper implements Mapper {
 
     if (prgMode === 0 || prgMode === 1) {
       // 32KBモード: バンク番号の下位1bitは無視して32KB単位で切り替える
+      // PRG が 16KB しかない ROM は同一バンクを $8000-$FFFF にミラーする
+      if (this.prg16kBankCount === 1) {
+        return this.prgRom[(addr - 0x8000) & 0x3fff] ?? 0;
+      }
       const bank32Count = Math.max(1, Math.floor(this.prg16kBankCount / 2));
       const bank32 = (bankSelect >> 1) % bank32Count;
       return this.prgRom[bank32 * 0x8000 + (addr - 0x8000)] ?? 0;

@@ -1,6 +1,7 @@
 /**
  * MOS 6502 互換 CPU（Ricoh 2A03）。
- * 公式（未定義命令を除く）56命令・151オペコードをテーブル駆動で実装する。
+ * 公式 56 命令に加え、ホームブリューで使われやすい未公認命令を一部サポートする
+ * （現状: AXS/SBX = 0xCB）。
  * サイクル数は「基本サイクル + ページ跨ぎ加算 + 分岐成立加算」で近似する
  * （RMW命令のABXモード等、実機で常に最大値を取るケースは基本サイクル自体に織り込み済み）。
  */
@@ -238,6 +239,10 @@ op(0x78, "SEI", "IMP", 2);
 op(0xb8, "CLV", "IMP", 2);
 op(0xd8, "CLD", "IMP", 2);
 op(0xf8, "SED", "IMP", 2);
+
+// --- Undocumented (common on NES) ---
+// AXS/SBX: X := (A & X) - #imm。N/Z/C を CMP と同様に更新（V は変更しない）。
+op(0xcb, "AXS", "IMM", 2);
 
 const PAGE_CROSS_BONUS_MNEMONICS = new Set([
   "LDA",
@@ -589,6 +594,15 @@ export class Cpu6502 {
         const v = read();
         this.setFlag(FLAG.C, this.y >= v);
         this.setZN((this.y - v) & 0xff);
+        return false;
+      }
+      case "AXS": {
+        // Undocumented: X = (A & X) - imm（借用なし減算）。C は結果が借りなかったとき。
+        const imm = this.bus.cpuRead(addr) & 0xff;
+        const t = ((this.a & this.x) & 0xff) - imm;
+        this.x = t & 0xff;
+        this.setFlag(FLAG.C, t >= 0);
+        this.setZN(this.x);
         return false;
       }
 
