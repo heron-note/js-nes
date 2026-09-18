@@ -144,6 +144,7 @@ h1 .subtitle {
 .screen-toolbar {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   width: 100%;
   max-width: 800px;
 }
@@ -156,6 +157,12 @@ h1 .subtitle {
   padding: 6px 12px;
   font-size: 0.8rem;
   cursor: pointer;
+}
+
+.screen-toolbar button.recording {
+  background: #5a2030;
+  border-color: #c05060;
+  color: #ffd0d8;
 }
 
 /* --- プレイモード（全画面。エディタを隠し、画面+パッドだけ表示） --- */
@@ -334,6 +341,14 @@ h1 .subtitle {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 16px;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.cassette-slot.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
 }
 
 .cassette-body {

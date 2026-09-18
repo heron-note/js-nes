@@ -1,4 +1,4 @@
-import { BUTTON, buildSmokeRom, type ButtonName, type ChannelSnapshot } from "@js-nes/emulator-core";
+import { BUTTON, buildSmokeRom, parseINes, type ButtonName, type ChannelSnapshot } from "@js-nes/emulator-core";
 import { compile } from "@js-nes/dsl-compiler";
 import { downloadRom } from "@js-nes/rom-builder";
 import { getTiles, initSpriteEditor, setTiles } from "./spriteEditor.js";
@@ -651,23 +651,40 @@ const cassetteResetBtn = document.querySelector<HTMLButtonElement>("#cassette-re
 const cassetteBody = document.querySelector<HTMLDivElement>("#cassette-body");
 const cassetteTitle = document.querySelector<HTMLParagraphElement>("#cassette-title");
 const cassetteSub = document.querySelector<HTMLParagraphElement>("#cassette-sub");
+const cassetteSlot = document.querySelector<HTMLDivElement>("#cassette-slot");
 const controlsHelpBtn = document.querySelector<HTMLButtonElement>("#controls-help-btn");
 const controlsHelpDialog = document.querySelector<HTMLDialogElement>("#controls-help-dialog");
+const screenshotBtn = document.querySelector<HTMLButtonElement>("#screenshot-btn");
+const recordBtn = document.querySelector<HTMLButtonElement>("#record-btn");
 
 /** Play用に刺さっているカセット（外部ROM）。null のときはスモークROM扱い。 */
 let insertedCassette: { name: string; bytes: Uint8Array } | null = null;
 
-function setCassetteUi(inserted: { name: string } | null, status = ""): void {
+function formatCassetteMeta(bytes: Uint8Array): string {
+  try {
+    const rom = parseINes(bytes);
+    const prgKb = Math.round(rom.prgRom.length / 1024);
+    const chrLabel = rom.chrIsRam ? "CHR-RAM" : `${Math.round(rom.chrRom.length / 1024)}KB CHR`;
+    return `Mapper ${rom.mapperId} / ${prgKb}KB PRG / ${chrLabel} / ${rom.mirroring}`;
+  } catch {
+    return "スロットにカセットが刺さっています";
+  }
+}
+
+function setCassetteUi(inserted: { name: string; meta?: string } | null, status = ""): void {
   if (cassetteBody) cassetteBody.dataset.inserted = inserted ? "true" : "false";
   if (cassetteTitle) cassetteTitle.textContent = inserted ? inserted.name : "カセットなし";
   if (cassetteSub) {
-    cassetteSub.textContent = inserted ? "スロットにカセットが刺さっています" : "スロットは空いています";
+    cassetteSub.textContent = inserted
+      ? (inserted.meta ?? "スロットにカセットが刺さっています")
+      : "スロットは空いています。.nes をドロップしても刺せます";
   }
   if (cassetteEjectBtn) cassetteEjectBtn.disabled = !inserted;
   if (romUploadStatus) romUploadStatus.textContent = status;
 }
 
 function insertCassette(name: string, bytes: Uint8Array): void {
+  const meta = formatCassetteMeta(bytes);
   insertedCassette = { name, bytes };
   loadRomResultHandlers.upload = (ok, message) => {
     if (ok) {
@@ -675,7 +692,7 @@ function insertCassette(name: string, bytes: Uint8Array): void {
       downloadBtn!.disabled = false;
       standaloneExportBtn!.disabled = false;
       statusEl!.textContent = `カセット「${name}」を実行中`;
-      setCassetteUi({ name }, "カセットを刺しました");
+      setCassetteUi({ name, meta }, "カセットを刺しました");
     } else {
       insertedCassette = null;
       setCassetteUi(null, `刺せませんでした: ${message}`);
@@ -695,15 +712,39 @@ function resetConsole(): void {
   if (insertedCassette) {
     loadRomInWorker(insertedCassette.bytes, "upload");
     statusEl!.textContent = `リセット: 「${insertedCassette.name}」`;
-    setCassetteUi({ name: insertedCassette.name }, "リセットしました");
+    setCassetteUi(
+      { name: insertedCassette.name, meta: formatCassetteMeta(insertedCassette.bytes) },
+      "リセットしました",
+    );
     return;
   }
   loadDemoRom();
   setCassetteUi(null, "リセットしました");
 }
 
+function loadNesFile(file: File): void {
+  if (!file.name.toLowerCase().endsWith(".nes")) {
+    setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, ".nes ファイルを選んでください");
+    return;
+  }
+  file
+    .arrayBuffer()
+    .then((buf) => {
+      insertCassette(file.name.replace(/\.nes$/i, "") || file.name, new Uint8Array(buf));
+    })
+    .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
+      setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, `読み込み失敗: ${message}`);
+    });
+}
+
 controlsHelpBtn?.addEventListener("click", () => {
   controlsHelpDialog?.showModal();
+});
+
+// 背景（dialog本体の外側）クリックで閉じる
+controlsHelpDialog?.addEventListener("click", (e) => {
+  if (e.target === controlsHelpDialog) controlsHelpDialog.close();
 });
 
 cassetteInsertBtn?.addEventListener("click", () => {
@@ -721,21 +762,112 @@ cassetteResetBtn?.addEventListener("click", () => {
 romUploadInput?.addEventListener("change", () => {
   const file = romUploadInput.files?.[0];
   if (!file) return;
-  file
-    .arrayBuffer()
-    .then((buf) => {
-      insertCassette(file.name.replace(/\.nes$/i, "") || file.name, new Uint8Array(buf));
-    })
-    .catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : String(err);
-      setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, `読み込み失敗: ${message}`);
-    })
-    .finally(() => {
-      romUploadInput.value = "";
-    });
+  loadNesFile(file);
+  romUploadInput.value = "";
 });
 
+if (cassetteSlot) {
+  cassetteSlot.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    cassetteSlot.classList.add("drag-over");
+  });
+  cassetteSlot.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    cassetteSlot.classList.add("drag-over");
+  });
+  cassetteSlot.addEventListener("dragleave", (e) => {
+    if (e.target === cassetteSlot) cassetteSlot.classList.remove("drag-over");
+  });
+  cassetteSlot.addEventListener("drop", (e) => {
+    e.preventDefault();
+    cassetteSlot.classList.remove("drag-over");
+    const file = e.dataTransfer?.files?.[0];
+    if (file) loadNesFile(file);
+  });
+}
+
 setCassetteUi(null);
+
+// --- スクリーンショット / 録画 ---
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+screenshotBtn?.addEventListener("click", () => {
+  canvas.toBlob((blob) => {
+    if (!blob) {
+      statusEl!.textContent = "スクリーンショットに失敗しました";
+      return;
+    }
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    downloadBlob(blob, `famijs-${stamp}.png`);
+    statusEl!.textContent = "スクリーンショットを保存しました";
+  }, "image/png");
+});
+
+let mediaRecorder: MediaRecorder | null = null;
+let recordedChunks: Blob[] = [];
+
+function pickRecorderMime(): string | undefined {
+  const candidates = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  for (const mime of candidates) {
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(mime)) return mime;
+  }
+  return undefined;
+}
+
+function stopRecording(): void {
+  if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+  mediaRecorder.stop();
+}
+
+recordBtn?.addEventListener("click", () => {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    stopRecording();
+    return;
+  }
+  if (typeof MediaRecorder === "undefined" || typeof canvas.captureStream !== "function") {
+    statusEl!.textContent = "このブラウザでは録画に対応していません";
+    return;
+  }
+  const mime = pickRecorderMime();
+  const stream = canvas.captureStream(60);
+  try {
+    mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+  } catch {
+    statusEl!.textContent = "録画の開始に失敗しました";
+    return;
+  }
+  recordedChunks = [];
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: mediaRecorder?.mimeType || "video/webm" });
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    downloadBlob(blob, `famijs-${stamp}.webm`);
+    recordedChunks = [];
+    mediaRecorder = null;
+    recordBtn.classList.remove("recording");
+    recordBtn.textContent = "⏺ 録画";
+    statusEl!.textContent = "録画を保存しました";
+    for (const track of stream.getTracks()) track.stop();
+  };
+  mediaRecorder.start(250);
+  recordBtn.classList.add("recording");
+  recordBtn.textContent = "⏹ 停止";
+  statusEl!.textContent = "録画中…";
+});
 
 // --- 音源(APU)モニタ ---
 const CHANNEL_LABELS = ["Pulse1", "Pulse2", "Triangle", "Noise"] as const;

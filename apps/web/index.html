@@ -15,6 +15,8 @@
       <div class="layout">
         <section class="screen-pane">
           <div class="screen-toolbar">
+            <button id="screenshot-btn" type="button" title="スクリーンショット">📷 スクショ</button>
+            <button id="record-btn" type="button" title="画面録画">⏺ 録画</button>
             <button id="play-mode-btn" type="button">▶ 全画面</button>
             <button id="exit-play-mode-btn" type="button" hidden>✕ 全画面を終了</button>
           </div>
@@ -104,11 +106,11 @@
               </dialog>
 
               <section class="cassette-deck" aria-label="カセットデッキ">
-                <div class="cassette-slot">
+                <div class="cassette-slot" id="cassette-slot">
                   <div class="cassette-body" id="cassette-body" data-inserted="false">
                     <div class="cassette-notch" aria-hidden="true"></div>
                     <p class="cassette-title" id="cassette-title">カセットなし</p>
-                    <p class="cassette-sub" id="cassette-sub">スロットは空いています</p>
+                    <p class="cassette-sub" id="cassette-sub">スロットは空いています。.nes をドロップしても刺せます</p>
                   </div>
                 </div>
                 <div class="cassette-actions">
