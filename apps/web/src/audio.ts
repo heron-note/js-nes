@@ -78,9 +78,21 @@ export class AudioEngine {
     }
   }
 
+  private setAudioStreaming(enabled: boolean): void {
+    this.worker?.postMessage({ type: "audioControl", enabled });
+  }
+
+  private bindContextState(ctx: AudioContext): void {
+    ctx.onstatechange = () => {
+      this.setAudioStreaming(ctx.state === "running");
+    };
+  }
+
   private ensureStarted(): AudioContext {
     if (!this.ctx) {
       this.ctx = this.createContext();
+      this.bindContextState(this.ctx);
+      this.setAudioStreaming(false);
     }
     if (!this.workletSetup) {
       this.workletSetup = this.setupWorklet(this.ctx).catch((err) => {
@@ -109,10 +121,14 @@ export class AudioEngine {
     node.connect(ctx.destination);
     // worklet nodeの`.port`の所有権をそのままWorkerへ譲渡する。これ以降Workerは
     // メインスレッドを一切経由せず、このportへ直接PCMサンプルをpostMessageできる。
+    // 送信開始は audioControl(enabled:true) まで待つ（suspended 中の遅延蓄積防止）。
     this.worker?.postMessage({ type: "audioPort", port: node.port, sampleRate: ctx.sampleRate }, [
       node.port,
     ]);
     this.workletReady = true;
+    if (ctx.state === "running") {
+      this.setAudioStreaming(true);
+    }
   }
 
   /**
@@ -123,6 +139,7 @@ export class AudioEngine {
     const ctx = this.ensureStarted();
     this.unlockSync(ctx);
     if (ctx.state === "suspended") {
+      this.setAudioStreaming(false);
       try {
         await ctx.resume();
       } catch (err) {
@@ -141,6 +158,7 @@ export class AudioEngine {
         // ignore
       }
     }
+    this.setAudioStreaming(ctx.state === "running");
   }
 
   /** まだ suspended なら再試行（パッド操作のたびに呼んでよい）。 */
@@ -152,7 +170,12 @@ export class AudioEngine {
     }
     this.unlockSync(ctx);
     if (ctx.state === "suspended") {
-      void ctx.resume();
+      this.setAudioStreaming(false);
+      void ctx.resume().then(() => {
+        this.setAudioStreaming(this.ctx?.state === "running");
+      });
+    } else if (ctx.state === "running") {
+      this.setAudioStreaming(true);
     }
     if (!this.workletReady && !this.workletSetup) {
       void this.resume();

@@ -16,6 +16,7 @@ const nes = new Nes();
 
 let audioPort: MessagePort | null = null;
 let sampleRateApplied = false;
+let audioEnabled = false;
 let loopStarted = false;
 let crashed = false;
 let lockstepEnabled = false;
@@ -56,7 +57,7 @@ function emitFrame(frame?: number): void {
   post({ type: "frame", framebuffer, channelSnapshots, frame, hash }, [framebuffer.buffer]);
 
   const samples = nes.apu.drainSamples();
-  if (audioPort && samples.length > 0) {
+  if (audioPort && audioEnabled && samples.length > 0) {
     audioPort.postMessage(samples, [samples.buffer]);
   }
 }
@@ -141,9 +142,24 @@ ctx.onmessage = (e: MessageEvent<NesWorkerInboundMessage>) => {
     }
     case "audioPort": {
       audioPort = msg.port;
+      audioEnabled = false;
       if (!sampleRateApplied) {
         nes.apu.setSampleRate(msg.sampleRate);
         sampleRateApplied = true;
+      }
+      // 接続時点の溜まりは捨てる（再生開始まで送らない）
+      nes.apu.drainSamples();
+      break;
+    }
+    case "audioControl": {
+      audioEnabled = msg.enabled;
+      if (audioEnabled) {
+        // 再開時に遅延キューを捨てて「今」から聴こえるようにする
+        nes.apu.drainSamples();
+        audioPort?.postMessage({ type: "flush" });
+      } else {
+        nes.apu.drainSamples();
+        audioPort?.postMessage({ type: "flush" });
       }
       break;
     }

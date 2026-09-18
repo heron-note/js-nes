@@ -23,7 +23,13 @@ export type NesWorkerInboundMessage =
   | { type: "stepFrame"; p1: number; p2: number; frame: number }
   // AudioWorkletNode.portの所有権をそのままWorkerへ譲渡する。以後Workerはメインスレッドを
   // 一切経由せず、このportへ直接PCMサンプルをpostMessageする。
-  | { type: "audioPort"; port: MessagePort; sampleRate: number };
+  | { type: "audioPort"; port: MessagePort; sampleRate: number }
+  /**
+   * AudioContext が running のときだけ true。
+   * suspended 中にサンプルを送り続けると Worklet キューに遅延が蓄積するため、
+   * running 復帰時に APU/Worklet を flush してから送信を再開する。
+   */
+  | { type: "audioControl"; enabled: boolean };
 
 export type NesWorkerOutboundMessage =
   | { type: "frame"; framebuffer: Uint8ClampedArray; channelSnapshots: ChannelSnapshot[]; frame?: number; hash?: number }
