@@ -79,17 +79,22 @@ h1 .subtitle {
   border-radius: 4px;
 }
 
-/* PC向けキー操作ガイド（タッチ操作の仮想パッドと相互排他。docs/01_ARCHITECTURE.md 参照） */
-.key-guide {
-  width: 100%;
-  max-width: 800px;
+.controls-guide {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.controls-guide-block {
+  flex: 1 1 200px;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 10px 14px;
 }
 
-.key-guide h3 {
+.controls-guide-block h4 {
   margin: 0 0 8px;
   font-size: 0.85rem;
   color: var(--muted);
@@ -113,7 +118,8 @@ h1 .subtitle {
   color: var(--text);
 }
 
-.key-guide kbd {
+.key-guide-row kbd,
+.controls-guide kbd {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -177,7 +183,6 @@ h1 .subtitle {
 
 .app.play-mode #screen,
 .app.play-mode .screen-toolbar,
-.app.play-mode .key-guide,
 .app.play-mode .pad {
   max-width: min(96vw, 1280px);
 }
@@ -188,6 +193,62 @@ h1 .subtitle {
   flex: 1;
   min-width: 0;
   border-top: 1px solid var(--border);
+}
+
+.mode-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mode-tabs button {
+  flex: 1;
+  background: var(--panel);
+  color: var(--muted);
+  border: none;
+  border-bottom: 3px solid transparent;
+  padding: 12px 16px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.mode-tabs button[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  background: #151821;
+}
+
+.mode-panels {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mode-panel {
+  display: none;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.mode-panel.active {
+  display: flex;
+}
+
+.mode-panel[data-mode-panel="play"] {
+  padding: 16px;
+  overflow: auto;
+}
+
+.mode-panel[data-mode-panel="create"] .tabs {
+  flex: 0 0 auto;
+}
+
+.mode-panel[data-mode-panel="create"] .panels {
+  flex: 1;
 }
 
 .tabs {
@@ -651,9 +712,9 @@ button#build-btn {
   word-break: break-word;
 }
 
-/* 仮想パッド（タッチデバイス向け。常時搭載方針は docs/01_ARCHITECTURE.md 参照） */
+/* 仮想パッド（PC/タブレット/スマホすべてで常時表示。8方向スティック） */
 .pad {
-  display: none;
+  display: flex;
   width: 100%;
   max-width: 512px;
   justify-content: space-between;
@@ -664,20 +725,40 @@ button#build-btn {
   user-select: none;
 }
 
-.dpad {
-  display: grid;
-  grid-template-columns: repeat(3, 40px);
-  grid-template-rows: repeat(3, 40px);
-  gap: 2px;
+.stick {
+  flex: 0 0 auto;
+  touch-action: none;
+  cursor: grab;
+  outline: none;
 }
 
-.dpad button {
+.stick-base {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  background: #0b0d12;
+  border: 2px solid var(--border);
+  box-shadow: inset 0 0 0 1px #2a2e3a;
+}
+
+.stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  margin-left: -20px;
+  margin-top: -20px;
+  border-radius: 50%;
   background: var(--panel);
-  border: 1px solid var(--border);
-  color: var(--text);
-  border-radius: 6px;
-  font-size: 1rem;
-  touch-action: none;
+  border: 2px solid var(--accent);
+  pointer-events: none;
+  transition: transform 0.05s linear;
+}
+
+.stick.active .stick-knob {
+  background: #243040;
 }
 
 .meta {
@@ -691,9 +772,10 @@ button#build-btn {
   border: 1px solid var(--border);
   color: var(--muted);
   border-radius: 999px;
-  padding: 6px 10px;
+  padding: 8px 12px;
   font-size: 0.7rem;
   touch-action: none;
+  cursor: pointer;
 }
 
 .buttons {
@@ -711,6 +793,7 @@ button#build-btn {
   font-weight: bold;
   font-size: 1rem;
   touch-action: none;
+  cursor: pointer;
 }
 
 /* --- レスポンシブ: PC/タブレット幅ではプレビューとパネルを横並びに --- */
@@ -727,29 +810,5 @@ button#build-btn {
 
   .main-pane {
     border-top: none;
-  }
-}
-
-/* --- レスポンシブ: 狭い画面（スマホ想定）ではタッチ操作用の仮想パッドを表示し、
-       キーボードガイドの代わりにする --- */
-@media (max-width: 819px) {
-  .pad {
-    display: flex;
-  }
-
-  .key-guide {
-    display: none;
-  }
-}
-
-/* ポインタ精度が粗い（≒タッチ主体）デバイスでは広い画面幅でも仮想パッドを出し、
-   キーボードガイドは隠す（docs/01_ARCHITECTURE.md のPC=キーボード方針） */
-@media (pointer: coarse) {
-  .pad {
-    display: flex;
-  }
-
-  .key-guide {
-    display: none;
   }
 }

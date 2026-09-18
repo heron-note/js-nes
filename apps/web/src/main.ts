@@ -8,6 +8,8 @@ import { exportStandaloneHtml } from "./standaloneExport.js";
 import { NetplayGuest, NetplayHost } from "./netplay.js";
 import NesWorkerCtor from "./nesWorker.ts?worker&inline";
 import type { LoadRomContext, NesWorkerOutboundMessage } from "./nesWorkerProtocol.js";
+import { pollGamepad, type GamepadButtonState } from "./gamepad.js";
+import { applyDirDiff, bindVirtualStick, type DirState } from "./virtualStick.js";
 import * as Blockly from "blockly/core";
 import { generatePartBody, generateSceneBody, initBlockEditor } from "./blocks/blockEditor.js";
 import { PART_TOOLBOX, SCENE_TOOLBOX } from "./blocks/toolbox.js";
@@ -696,15 +698,33 @@ function updateChannelMeters(): void {
 
 // Workerから届いた最新のフレームバッファをベストエフォートで描画するだけ。
 // Worker側の実際の描画/音声ペースとは無関係で、初回フレーム到着前は何も描かない。
+let gamepadPrev: GamepadButtonState = {
+  a: false,
+  b: false,
+  start: false,
+  select: false,
+  dir: { up: false, down: false, left: false, right: false },
+};
+const gamepadStatusEl = document.querySelector<HTMLParagraphElement>("#gamepad-status");
+
 function frame(): void {
   if (latestFramebuffer) {
     imageData.data.set(latestFramebuffer);
     ctx!.putImageData(imageData, 0, 0);
   }
   updateChannelMeters();
+
+  const gp = pollGamepad(gamepadPrev, setLocalButton);
+  gamepadPrev = gp.state;
+  if (gamepadStatusEl) {
+    gamepadStatusEl.textContent = gp.connected
+      ? `ゲームパッド: 接続中（${gp.id ?? "unknown"}）`
+      : "ゲームパッド: 未接続（ボタンを押すと検出されます）";
+  }
+
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+// requestAnimationFrame は setLocalButton 定義後に開始する（下参照）
 
 // --- 音源タブ: 試聴 + 名前付きサウンドアセットの保存 ---
 const toneChannelSelect = document.querySelector<HTMLSelectElement>("#tone-channel");
@@ -844,7 +864,17 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
-// --- 仮想パッド（タッチデバイス向け、常時搭載。docs/01_ARCHITECTURE.md 参照） ---
+// --- 仮想パッド: 8方向スティック + SELECT/START/A/B ---
+const stickRoot = document.querySelector<HTMLElement>("#virtual-stick");
+const stickKnob = document.querySelector<HTMLElement>("#virtual-stick-knob");
+let stickDir: DirState = { up: false, down: false, left: false, right: false };
+if (stickRoot && stickKnob) {
+  bindVirtualStick(stickRoot, stickKnob, (next) => {
+    applyDirDiff(stickDir, next, setLocalButton);
+    stickDir = next;
+  });
+}
+
 const padButtons = document.querySelectorAll<HTMLButtonElement>("#virtual-pad button[data-btn]");
 padButtons.forEach((el) => {
   const name = el.dataset.btn as ButtonName | undefined;
@@ -861,7 +891,32 @@ padButtons.forEach((el) => {
   el.addEventListener("pointercancel", press(false));
 });
 
-// --- タブ切り替え ---
+// --- Play / Create モード切替 + Create 内サブタブ ---
+const modeButtons = document.querySelectorAll<HTMLButtonElement>(".mode-tabs button[data-mode]");
+const modePanels = document.querySelectorAll<HTMLDivElement>(".mode-panel[data-mode-panel]");
+
+function setMode(mode: "play" | "create"): void {
+  modeButtons.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === mode)));
+  modePanels.forEach((p) => {
+    const active = p.dataset.modePanel === mode;
+    p.classList.toggle("active", active);
+    p.hidden = !active;
+  });
+  if (mode === "create") {
+    const selected = document.querySelector<HTMLButtonElement>('.tabs button[data-tab][aria-selected="true"]');
+    const target = selected?.dataset.tab;
+    if (target === "parts" && partBlockWorkspace) Blockly.svgResize(partBlockWorkspace);
+    if (target === "scenes" && sceneBlockWorkspace) Blockly.svgResize(sceneBlockWorkspace);
+  }
+}
+
+modeButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const mode = btn.dataset.mode;
+    if (mode === "play" || mode === "create") setMode(mode);
+  });
+});
+
 const tabButtons = document.querySelectorAll<HTMLButtonElement>(".tabs button[data-tab]");
 const panels = document.querySelectorAll<HTMLDivElement>(".panel[data-panel]");
 
@@ -874,6 +929,8 @@ tabButtons.forEach((btn) => {
     if (target === "scenes" && sceneBlockWorkspace) Blockly.svgResize(sceneBlockWorkspace);
   });
 });
+
+requestAnimationFrame(frame);
 
 // --- プレイモード（PC向け全画面プレイ。エディタ部分を隠して画面プレビューだけ表示する） ---
 const appEl = document.querySelector<HTMLDivElement>(".app");
