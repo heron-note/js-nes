@@ -52,17 +52,19 @@ h1 .subtitle {
 
 .app-version {
   position: fixed;
-  right: max(10px, env(safe-area-inset-right));
-  bottom: max(8px, env(safe-area-inset-bottom));
-  z-index: 40;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(10px, env(safe-area-inset-bottom));
+  z-index: 9999;
   margin: 0;
-  padding: 2px 6px;
+  padding: 4px 8px;
   border-radius: 4px;
-  font-size: 0.7rem;
+  border: 1px solid rgb(255 255 255 / 18%);
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
   line-height: 1.2;
-  letter-spacing: 0.02em;
-  color: var(--muted);
-  background: rgb(16 18 24 / 55%);
+  letter-spacing: 0.04em;
+  color: #c8cdd8;
+  background: rgb(10 12 18 / 80%);
   pointer-events: none;
   user-select: none;
 }
