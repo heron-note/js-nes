@@ -1,4 +1,5 @@
-import { BUTTON, buildSmokeRom, parseINes, type ButtonName, type ChannelSnapshot } from "@js-nes/emulator-core";
+import { BUTTON, parseINes, type ButtonName, type ChannelSnapshot } from "@js-nes/emulator-core";
+import { buildBootRom } from "./bootRom.js";
 import { compile } from "@js-nes/dsl-compiler";
 import { downloadRom } from "@js-nes/rom-builder";
 import { getTiles, initSpriteEditor, setTiles } from "./spriteEditor.js";
@@ -158,11 +159,12 @@ function loadRomInWorker(bytes: Uint8Array, context: LoadRomContext): void {
 
 loadRomResultHandlers.demo = (ok, message) => {
   statusEl!.textContent = ok
-    ? "動作確認用ROM（emulator-core単体の疎通確認用）を実行中"
-    : `動作確認用ROMの読み込みに失敗しました: ${message}`;
+    ? "内蔵画面（カセットなし）"
+    : `内蔵 ROM の読み込みに失敗しました: ${message}`;
 };
-function loadDemoRom(): void {
-  loadRomInWorker(buildSmokeRom(), "demo");
+/** カセット未挿入時の電源ON／抜いたあと用。本体に組み込まれたブート画面。 */
+function loadBootRom(): void {
+  loadRomInWorker(buildBootRom(), "demo");
 }
 
 function fromBase64(b64: string): Uint8Array {
@@ -677,13 +679,10 @@ refreshSceneSelect();
 if (project.parts.length > 0) selectPart(0);
 if (project.scenes.length > 0) selectScene(0);
 if (!embeddedRomB64) {
-  if (project.parts.length > 0 || project.scenes.length > 0) {
-    buildAndRun();
-  } else {
-    loadDemoRom();
-  }
+  // Play はカセットなし＝内蔵ブート画面。Create のサンプルはビルドボタンで流す。
+  loadBootRom();
 }
-reloadBtn.addEventListener("click", loadDemoRom);
+reloadBtn.addEventListener("click", loadBootRom);
 
 // --- プロジェクトのエクスポート/インポート（JSON） ---
 const projectExportBtn = document.querySelector<HTMLButtonElement>("#project-export-btn");
@@ -750,7 +749,7 @@ const controlsHelpDialog = document.querySelector<HTMLDialogElement>("#controls-
 const screenshotBtn = document.querySelector<HTMLButtonElement>("#screenshot-btn");
 const recordBtn = document.querySelector<HTMLButtonElement>("#record-btn");
 
-/** Play用に刺さっているカセット。null のときはスモークROM扱い。 */
+/** Play用に刺さっているカセット。null のときは内蔵ブート ROM。 */
 let insertedCassette: {
   name: string;
   bytes: Uint8Array;
@@ -807,8 +806,8 @@ function insertCassette(
 function ejectCassette(): void {
   insertedCassette = null;
   setCassetteUi(null, "カセットを抜きました");
-  loadDemoRom();
-  statusEl!.textContent = "カセットを抜きました（動作確認用ROM）";
+  loadBootRom();
+  statusEl!.textContent = "カセットを抜きました（内蔵画面）";
 }
 
 function resetConsole(): void {
@@ -821,8 +820,8 @@ function resetConsole(): void {
     );
     return;
   }
-  loadDemoRom();
-  setCassetteUi(null, "リセットしました");
+  loadBootRom();
+  setCassetteUi(null, "リセットしました（内蔵画面）");
 }
 
 function loadNesFile(file: File): void {
