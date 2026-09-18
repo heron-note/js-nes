@@ -60,6 +60,9 @@ import {
   type CloudFileEntry,
 } from "./githubCloud.js";
 import { isGithubCloudConfigured } from "./githubConfig.js";
+import { applyPlayI18n, t } from "./playI18n.js";
+
+applyPlayI18n();
 
 const canvas = document.querySelector<HTMLCanvasElement>("#screen");
 const statusEl = document.querySelector<HTMLParagraphElement>("#status");
@@ -151,12 +154,12 @@ nesWorker.onmessage = (e: MessageEvent<NesWorkerOutboundMessage>) => {
       loadRomResultHandlers[msg.context]?.(msg.ok, msg.message);
       break;
     case "fatalError":
-      statusEl!.textContent = `エミュレーターが異常終了しました: ${msg.message}（ページを再読み込みしてください）`;
+      statusEl!.textContent = t("status.workerCrash", { message: msg.message });
       break;
   }
 };
 nesWorker.onerror = (ev: ErrorEvent) => {
-  statusEl!.textContent = `エミュレーターWorkerでエラーが発生しました: ${ev.message}（ページを再読み込みしてください）`;
+  statusEl!.textContent = t("status.workerError", { message: ev.message });
 };
 
 function loadRomInWorker(bytes: Uint8Array, context: LoadRomContext): void {
@@ -164,9 +167,7 @@ function loadRomInWorker(bytes: Uint8Array, context: LoadRomContext): void {
 }
 
 loadRomResultHandlers.demo = (ok, message) => {
-  statusEl!.textContent = ok
-    ? "内蔵画面（カセットなし）"
-    : `内蔵 ROM の読み込みに失敗しました: ${message}`;
+  statusEl!.textContent = ok ? t("status.bootOk") : t("status.bootFail", { message: message ?? "" });
 };
 /** カセット未挿入時の電源ON／抜いたあと用。本体に組み込まれたブート画面。 */
 function loadBootRom(): void {
@@ -652,7 +653,7 @@ if (embeddedDataEl?.textContent) {
 }
 
 loadRomResultHandlers.embedded = (ok, message) => {
-  if (!ok) statusEl!.textContent = `配布用HTMLに同梱されたROMの実行に失敗しました: ${message}`;
+  if (!ok) statusEl!.textContent = t("status.embeddedFail", { message: message ?? "" });
 };
 
 if (embeddedRomB64) {
@@ -661,7 +662,7 @@ if (embeddedRomB64) {
   lastBuiltRom = rom;
   downloadBtn.disabled = false;
   standaloneExportBtn.disabled = false;
-  statusEl.textContent = "配布用HTMLに同梱されたROMを実行中";
+  statusEl.textContent = t("status.embeddedOk");
 } else {
   const savedProject = loadProjectFromLocalStorage();
   if (savedProject) project = savedProject;
@@ -770,17 +771,17 @@ function formatCassetteMeta(bytes: Uint8Array): string {
     const chrLabel = rom.chrIsRam ? "CHR-RAM" : `${Math.round(rom.chrRom.length / 1024)}KB CHR`;
     return `Mapper ${rom.mapperId} / ${prgKb}KB PRG / ${chrLabel} / ${rom.mirroring}`;
   } catch {
-    return "スロットにカセットが刺さっています";
+    return t("cassette.insertedMetaFallback");
   }
 }
 
 function setCassetteUi(inserted: { name: string; meta?: string } | null, status = ""): void {
   if (cassetteBody) cassetteBody.dataset.inserted = inserted ? "true" : "false";
-  if (cassetteTitle) cassetteTitle.textContent = inserted ? inserted.name : "カセットなし";
+  if (cassetteTitle) cassetteTitle.textContent = inserted ? inserted.name : t("cassette.none");
   if (cassetteSub) {
     cassetteSub.textContent = inserted
-      ? (inserted.meta ?? "スロットにカセットが刺さっています")
-      : "スロットは空いています。.nes / .zip をドロップしても刺せます";
+      ? (inserted.meta ?? t("cassette.insertedMetaFallback"))
+      : t("cassette.emptySub");
   }
   if (cassetteEjectBtn) cassetteEjectBtn.disabled = !inserted;
   if (romUploadStatus) romUploadStatus.textContent = status;
@@ -789,7 +790,7 @@ function setCassetteUi(inserted: { name: string; meta?: string } | null, status 
 function insertCassette(
   name: string,
   bytes: Uint8Array,
-  statusOnOk = "カセットを刺しました",
+  statusOnOk = t("cassette.insertedOk"),
   opts?: { fromSample?: boolean },
 ): void {
   const meta = formatCassetteMeta(bytes);
@@ -799,11 +800,11 @@ function insertCassette(
       lastBuiltRom = bytes;
       downloadBtn!.disabled = false;
       standaloneExportBtn!.disabled = false;
-      statusEl!.textContent = `カセット「${name}」を実行中`;
+      statusEl!.textContent = t("cassette.running", { name });
       setCassetteUi({ name, meta }, statusOnOk);
     } else {
       insertedCassette = null;
-      setCassetteUi(null, `刺せませんでした: ${message}`);
+      setCassetteUi(null, t("cassette.insertFailed", { message: message ?? "" }));
     }
   };
   loadRomInWorker(bytes, "upload");
@@ -811,23 +812,23 @@ function insertCassette(
 
 function ejectCassette(): void {
   insertedCassette = null;
-  setCassetteUi(null, "カセットを抜きました");
+  setCassetteUi(null, t("cassette.ejected"));
   loadBootRom();
-  statusEl!.textContent = "カセットを抜きました（内蔵画面）";
+  statusEl!.textContent = t("cassette.ejectedStatus");
 }
 
 function resetConsole(): void {
   if (insertedCassette) {
     loadRomInWorker(insertedCassette.bytes, "upload");
-    statusEl!.textContent = `リセット: 「${insertedCassette.name}」`;
+    statusEl!.textContent = t("cassette.resetNamed", { name: insertedCassette.name });
     setCassetteUi(
       { name: insertedCassette.name, meta: formatCassetteMeta(insertedCassette.bytes) },
-      "リセットしました",
+      t("cassette.resetOk"),
     );
     return;
   }
   loadBootRom();
-  setCassetteUi(null, "リセットしました（内蔵画面）");
+  setCassetteUi(null, t("cassette.resetBoot"));
 }
 
 function loadNesFile(file: File): void {
@@ -836,13 +837,13 @@ function loadNesFile(file: File): void {
       const status = rom.note
         ? rom.note
         : rom.fromZip
-          ? `ZIP から「${rom.name}.nes」を刺しました`
-          : "カセットを刺しました";
+          ? t("cassette.zipInserted", { name: rom.name })
+          : t("cassette.insertedOk");
       insertCassette(rom.name, rom.bytes, status, { fromSample: false });
     })
     .catch((err: unknown) => {
       const message = err instanceof Error ? err.message : String(err);
-      setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, `読み込み失敗: ${message}`);
+      setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, t("cassette.loadFailed", { message }));
     });
 }
 
@@ -868,19 +869,19 @@ function kindOf(entry: SampleRomEntry): SampleKind {
 }
 
 function kindLabel(kind: SampleKind): string {
-  if (kind === "game") return "ゲーム（遊べる）";
-  if (kind === "demo") return "デモ（見る／試す）";
-  if (kind === "tool") return "開発ツール";
-  if (kind === "template") return "テンプレ（開発用・遊べない）";
-  return "検証（マッパー／周辺機器）";
+  if (kind === "game") return t("sample.kind.game");
+  if (kind === "demo") return t("sample.kind.demo");
+  if (kind === "tool") return t("sample.kind.tool");
+  if (kind === "template") return t("sample.kind.template");
+  return t("sample.kind.test");
 }
 
 function kindTag(kind: SampleKind): string {
-  if (kind === "game") return "ゲーム";
-  if (kind === "demo") return "デモ";
-  if (kind === "tool") return "ツール";
-  if (kind === "template") return "テンプレ";
-  return "検証";
+  if (kind === "game") return t("sample.tag.game");
+  if (kind === "demo") return t("sample.tag.demo");
+  if (kind === "tool") return t("sample.tag.tool");
+  if (kind === "template") return t("sample.tag.template");
+  return t("sample.tag.test");
 }
 
 function updateSampleRomBlurb(): void {
@@ -893,10 +894,10 @@ function updateSampleRomBlurb(): void {
   const kind = kindOf(entry);
   const summary =
     entry.summary?.trim() ||
-    `${kindLabel(kind)}。作者 ${entry.author} / ${entry.license} / Mapper ${entry.mapper}`;
+    t("sample.fallbackSummary", { kind: kindLabel(kind), author: entry.author, license: entry.license, mapper: entry.mapper });
   const howto =
     entry.howto?.trim() ||
-    "操作はソフト内の案内に従ってください。テンプレ・検証ROMは遊ぶ要素がないことがあります。";
+    t("sample.fallbackHowto");
   sampleRomSummary.textContent = `【${kindTag(kind)}】${summary}`;
   sampleRomHowto.textContent = howto;
   sampleRomBlurb.removeAttribute("hidden");
@@ -908,7 +909,7 @@ function populateSampleRomSelect(entries: SampleRomEntry[]): void {
   sampleRomSelect.innerHTML = "";
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = "収録ソフトを選ぶ…";
+  placeholder.textContent = t("sample.pick");
   sampleRomSelect.appendChild(placeholder);
 
   for (const kind of KIND_ORDER) {
@@ -936,7 +937,7 @@ void loadSampleCatalog()
       sampleRomSelect.innerHTML = "";
       const opt = document.createElement("option");
       opt.value = "";
-      opt.textContent = "収録ソフト一覧を取得できません";
+      opt.textContent = t("sample.fetchFailed");
       sampleRomSelect.appendChild(opt);
       sampleRomSelect.disabled = true;
     }
@@ -956,22 +957,23 @@ sampleRomPlayBtn?.addEventListener("click", () => {
   const id = sampleRomSelect?.value;
   const entry = sampleRomEntries.find((e) => e.id === id);
   if (!entry) {
-    setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, "収録ソフトを選んでください");
+    setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, t("sample.pickPlease"));
     return;
   }
   sampleRomPlayBtn.disabled = true;
-  setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, `「${entry.title}」をダウンロード中…`);
+  setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, t("sample.downloading", { title: entry.title }));
   void fetchSampleRomBytes(entry)
     .then((bytes) => {
       // メモリ上だけで刺す。永続化・倉庫保存はしない（fromSample）
-      insertCassette(entry.title, bytes, `「${entry.title}」を刺しました`, {
+      insertCassette(entry.title, bytes, t("sample.inserted", { title: entry.title }), {
         fromSample: true,
       });
     })
     .catch((err: unknown) => {
+      const message = err instanceof Error ? err.message : String(err);
       setCassetteUi(
         insertedCassette ? { name: insertedCassette.name } : null,
-        err instanceof Error ? err.message : String(err),
+        t("sample.loadFailed", { message }),
       );
     })
     .finally(() => {
@@ -1082,8 +1084,8 @@ async function refreshCloudLists(): Promise<void> {
     listCloudRoms(githubToken, githubRepo.owner, githubRepo.repo),
     listCloudProjects(githubToken, githubRepo.owner, githubRepo.repo),
   ]);
-  fillCloudSelect(githubRomSelect, roms, "（カセットなし）");
-  fillCloudSelect(githubProjectSelect, projects, "（プロジェクトなし）");
+  fillCloudSelect(githubRomSelect, roms, t("github.noRoms"));
+  fillCloudSelect(githubProjectSelect, projects, t("github.noProjects"));
 }
 
 async function activateGithubSession(token: string): Promise<void> {
@@ -1095,7 +1097,7 @@ async function activateGithubSession(token: string): Promise<void> {
   if (githubLogoutBtn) githubLogoutBtn.hidden = false;
   if (githubCloudControls) githubCloudControls.hidden = false;
   if (githubDeviceHint) githubDeviceHint.hidden = true;
-  setGithubAuthStatus(`倉庫 ${githubRepo.owner}/${githubRepo.repo} を利用中`);
+  setGithubAuthStatus(t("github.usingRepo", { owner: githubRepo.owner, repo: githubRepo.repo }));
   await refreshCloudLists();
 }
 
@@ -1106,7 +1108,7 @@ function clearGithubSession(): void {
   githubUser = null;
   githubRepo = null;
   clearStoredToken();
-  if (githubUserLabel) githubUserLabel.textContent = "未ログイン";
+  if (githubUserLabel) githubUserLabel.textContent = t("github.loggedOut");
   if (githubLoginBtn) githubLoginBtn.hidden = false;
   if (githubLogoutBtn) githubLogoutBtn.hidden = true;
   if (githubCloudControls) githubCloudControls.hidden = true;
@@ -1128,7 +1130,7 @@ if (!isGithubCloudConfigured()) {
   githubLoginBtn?.addEventListener("click", () => {
     githubLoginAbort?.abort();
     githubLoginAbort = new AbortController();
-    setGithubAuthStatus("ログイン準備中…");
+    setGithubAuthStatus(t("github.loginPreparing"));
     if (githubDeviceHint) githubDeviceHint.hidden = true;
     loginWithDeviceFlow((info) => {
       if (githubUserCodeEl) githubUserCodeEl.textContent = info.userCode;
@@ -1137,12 +1139,12 @@ if (!isGithubCloudConfigured()) {
         githubVerifyLink.textContent = info.verificationUri;
       }
       if (githubDeviceHint) githubDeviceHint.hidden = false;
-      setGithubAuthStatus("GitHub でコードを入力してください");
+      setGithubAuthStatus(t("github.enterCode"));
     }, githubLoginAbort.signal)
       .then((token) => activateGithubSession(token))
       .catch((err: unknown) => {
-        if (err instanceof GithubAuthError && err.message.includes("キャンセル")) {
-          setGithubAuthStatus("ログインをキャンセルしました");
+        if (err instanceof GithubAuthError && /cancel|キャンセル/i.test(err.message)) {
+          setGithubAuthStatus(t("github.loginCancelled"));
         } else {
           setGithubAuthStatus(err instanceof Error ? err.message : String(err));
         }
@@ -1152,30 +1154,30 @@ if (!isGithubCloudConfigured()) {
 
   githubLogoutBtn?.addEventListener("click", () => {
     clearGithubSession();
-    setGithubAuthStatus("ログアウトしました");
+    setGithubAuthStatus(t("github.loggedOutStatus"));
   });
 
   githubRomRefreshBtn?.addEventListener("click", () => {
     refreshCloudLists()
-      .then(() => setGithubAuthStatus("一覧を更新しました"))
+      .then(() => setGithubAuthStatus(t("github.listRefreshed")))
       .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
   });
 
   githubProjectRefreshBtn?.addEventListener("click", () => {
     refreshCloudLists()
-      .then(() => setGithubAuthStatus("一覧を更新しました"))
+      .then(() => setGithubAuthStatus(t("github.listRefreshed")))
       .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
   });
 
   githubRomLoadBtn?.addEventListener("click", () => {
     const path = githubRomSelect?.value;
     if (!path || !githubToken || !githubRepo) return;
-    setGithubAuthStatus("カセットを取得中…");
+    setGithubAuthStatus(t("github.fetchingRom"));
     loadCloudFileBytes(githubToken, githubRepo.owner, githubRepo.repo, path)
       .then((bytes) => {
         const name = path.split("/").pop()?.replace(/\.nes$/i, "") || "cloud";
         insertCassette(name, bytes);
-        setGithubAuthStatus(`「${name}」を倉庫から刺しました`);
+        setGithubAuthStatus(t("github.romInserted", { name }));
       })
       .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
   });
@@ -1183,28 +1185,26 @@ if (!isGithubCloudConfigured()) {
   githubRomSaveBtn?.addEventListener("click", () => {
     if (!githubToken || !githubRepo) return;
     if (insertedCassette?.fromSample) {
-      setGithubAuthStatus(
-        "収録ソフトは倉庫に保存できません。自分の .nes を刺してから保存してください。",
-      );
+      setGithubAuthStatus(t("github.sampleNoSave"));
       return;
     }
     const bytes = insertedCassette?.bytes ?? lastBuiltRom;
     const name = insertedCassette?.name || cartTitleInput.value.trim() || "game";
     if (!bytes) {
-      setGithubAuthStatus("保存するカセットがありません（先に刺すかビルドしてください）");
+      setGithubAuthStatus(t("github.nothingToSave"));
       return;
     }
-    setGithubAuthStatus("カセットを保存中…");
+    setGithubAuthStatus(t("github.savingRom"));
     saveCloudRom(githubToken, githubRepo.owner, githubRepo.repo, name, bytes)
       .then(() => refreshCloudLists())
-      .then(() => setGithubAuthStatus(`「${name}.nes」を倉庫に保存しました`))
+      .then(() => setGithubAuthStatus(t("github.romSaved", { name })))
       .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
   });
 
   githubProjectLoadBtn?.addEventListener("click", () => {
     const path = githubProjectSelect?.value;
     if (!path || !githubToken || !githubRepo) return;
-    setGithubAuthStatus("プロジェクトを取得中…");
+    setGithubAuthStatus(t("github.fetchingProject"));
     loadCloudFileText(githubToken, githubRepo.owner, githubRepo.repo, path)
       .then((text) => {
         project = parseProject(text);
@@ -1218,7 +1218,7 @@ if (!isGithubCloudConfigured()) {
         if (project.scenes.length > 0) selectScene(0);
         refreshSoundList();
         buildAndRun();
-        setGithubAuthStatus("倉庫のプロジェクトを開きました");
+        setGithubAuthStatus(t("github.projectOpened"));
       })
       .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
   });
@@ -1230,10 +1230,10 @@ if (!isGithubCloudConfigured()) {
     project.title = cartTitleInput.value;
     project.author = cartAuthorInput.value;
     const name = project.title.trim() || "project";
-    setGithubAuthStatus("プロジェクトを保存中…");
+    setGithubAuthStatus(t("github.savingProject"));
     saveCloudProject(githubToken, githubRepo.owner, githubRepo.repo, name, serializeProject(project))
       .then(() => refreshCloudLists())
-      .then(() => setGithubAuthStatus(`「${name}」を倉庫に保存しました`))
+      .then(() => setGithubAuthStatus(t("github.projectSaved", { name })))
       .catch((err: unknown) => setGithubAuthStatus(err instanceof Error ? err.message : String(err)));
   });
 }
@@ -1256,12 +1256,12 @@ function downloadBlob(blob: Blob, filename: string): void {
 screenshotBtn?.addEventListener("click", () => {
   canvas.toBlob((blob) => {
     if (!blob) {
-      statusEl!.textContent = "スクリーンショットに失敗しました";
+      statusEl!.textContent = t("status.screenshotFail");
       return;
     }
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     downloadBlob(blob, `famijs-${stamp}.png`);
-    statusEl!.textContent = "スクリーンショットを保存しました";
+    statusEl!.textContent = t("status.screenshotOk");
   }, "image/png");
 });
 
@@ -1287,7 +1287,7 @@ recordBtn?.addEventListener("click", () => {
     return;
   }
   if (typeof MediaRecorder === "undefined" || typeof canvas.captureStream !== "function") {
-    statusEl!.textContent = "このブラウザでは録画に対応していません";
+    statusEl!.textContent = t("status.recordUnsupported");
     return;
   }
   const mime = pickRecorderMime();
@@ -1295,7 +1295,7 @@ recordBtn?.addEventListener("click", () => {
   try {
     mediaRecorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
   } catch {
-    statusEl!.textContent = "録画の開始に失敗しました";
+    statusEl!.textContent = t("status.recordStartFail");
     return;
   }
   recordedChunks = [];
@@ -1310,13 +1310,13 @@ recordBtn?.addEventListener("click", () => {
     mediaRecorder = null;
     recordBtn?.classList.remove("recording");
     if (recordBtn) recordBtn.textContent = "⏺";
-    statusEl!.textContent = "録画を保存しました";
+    statusEl!.textContent = t("status.recordSaved");
     for (const track of stream.getTracks()) track.stop();
   };
   mediaRecorder.start(250);
   recordBtn.classList.add("recording");
   recordBtn.textContent = "⏹";
-  statusEl!.textContent = "録画中…";
+  statusEl!.textContent = t("status.recording");
 });
 
 // --- 音源(APU)モニタ ---
@@ -1366,8 +1366,8 @@ function frame(): void {
   gamepadPrev = gp.state;
   if (gamepadStatusEl) {
     gamepadStatusEl.textContent = gp.connected
-      ? `ゲームパッド: 接続中（${gp.id ?? "unknown"}）`
-      : "ゲームパッド: 未接続（ボタンを押すと検出されます）";
+      ? t("controls.gamepadConnected", { id: gp.id ?? "unknown" })
+      : t("controls.gamepadDisconnected");
   }
 
   requestAnimationFrame(frame);
@@ -1612,7 +1612,7 @@ function setPadCollapsed(collapsed: boolean): void {
   if (!padWrap || !padToggleBtn) return;
   padWrap.classList.toggle("pad-collapsed", collapsed);
   padToggleBtn.setAttribute("aria-expanded", String(!collapsed));
-  padToggleBtn.textContent = collapsed ? "パッドを開く" : "パッドを閉じる";
+  padToggleBtn.textContent = collapsed ? t("pad.toggleOpen") : t("pad.toggleClose");
   requestAnimationFrame(() => updatePlayChromeHeight());
 }
 
@@ -1726,11 +1726,11 @@ const netplayGuestVideoEl = document.querySelector<HTMLVideoElement>("#netplay-g
 
 function setNetplayBadge(text: string, active = false): void {
   if (!netplayBadge) return;
-  const idle = !text || text === "未接続";
+  const idle = !text || text === t("netplay.badgeDisconnected");
   netplayBadge.hidden = idle && !active;
   if (!idle || active) {
     netplayBadge.hidden = false;
-    netplayBadge.textContent = text || "接続中";
+    netplayBadge.textContent = text || t("netplay.badgeConnected");
   }
   netplayBadge.dataset.active = active ? "true" : "false";
 }
@@ -1746,21 +1746,25 @@ function syncNetplayBadgeFromStatuses(): void {
   const hostText = netplayHostStatusEl?.textContent?.trim() ?? "";
   const guestText = netplayGuestStatusEl?.textContent?.trim() ?? "";
   const connected =
-    /connected|接続済|対戦中|running|ROM 同期完了|ロックステップ運転中/i.test(hostText) ||
-    /connected|接続済|対戦中|running|ROM 同期完了|ロックステップ運転中/i.test(guestText);
+    /connected|接続済|対戦中|running|in match|rom synced|lockstep running|ROM 同期完了|ロックステップ運転中/i.test(
+      hostText,
+    ) ||
+    /connected|接続済|対戦中|running|in match|rom synced|lockstep running|ROM 同期完了|ロックステップ運転中/i.test(
+      guestText,
+    );
   const busy =
     netplayGuestActive ||
     lockstepGuestActive ||
     lockstepHostActive ||
-    /生成中|接続中|発行|転送|待機/i.test(hostText) ||
-    /生成中|接続中|発行|転送|待機/i.test(guestText);
+    /生成中|接続中|発行|転送|待機|generating|connecting|invite|transfer|waiting/i.test(hostText) ||
+    /生成中|接続中|発行|転送|待機|generating|connecting|invite|transfer|waiting/i.test(guestText);
   if (connected) {
-    setNetplayBadge("対戦中", true);
+    setNetplayBadge(t("netplay.badgePlaying"), true);
   } else if (busy) {
-    const msg = hostText !== "未接続" && hostText ? hostText : guestText;
+    const msg = hostText !== t("netplay.badgeDisconnected") && hostText ? hostText : guestText;
     setNetplayBadge(msg.length > 24 ? `${msg.slice(0, 24)}…` : msg, false);
   } else {
-    setNetplayBadge("未接続", false);
+    setNetplayBadge(t("netplay.badgeDisconnected"), false);
   }
 }
 
@@ -1810,7 +1814,7 @@ function loadRomForNetplay(bytes: Uint8Array): Promise<void> {
     loadRomResultHandlers.netplay = (ok, message) => {
       delete loadRomResultHandlers.netplay;
       if (ok) resolve();
-      else reject(new Error(message ?? "ROMの読み込みに失敗しました"));
+      else reject(new Error(message ?? t("netplay.romLoadFailed")));
     };
     // コピーを渡して転送後も呼び出し側バッファを残す
     const copy = bytes.slice();
@@ -1825,7 +1829,7 @@ function enableLockstepWorker(enabled: boolean): void {
 function makeLockstepHooks(setStatus: (message: string) => void) {
   return {
     onStatus: (state: RTCPeerConnectionState) => {
-      setStatus(`接続状態: ${state}`);
+      setStatus(t("netplay.connectionState", { state }));
     },
     onLog: (message: string) => {
       setStatus(message);
@@ -1834,13 +1838,13 @@ function makeLockstepHooks(setStatus: (message: string) => void) {
       enableLockstepWorker(true);
       await loadRomForNetplay(bytes);
       lastBuiltRom = bytes;
-      setStatus(`ROM「${name}」をロードしました（ロックステップ）`);
+      setStatus(t("netplay.romLoadedLockstep", { name }));
     },
     onStep: (frame: number, p1: number, p2: number) => {
       nesWorker.postMessage({ type: "stepFrame", p1, p2, frame });
     },
     onDesync: (frame: number, localHash: number, remoteHash: number) => {
-      setStatus(`デシンク frame=${frame}（local=${localHash} remote=${remoteHash}）`);
+      setStatus(t("netplay.desync", { frame, localHash, remoteHash }));
       enableLockstepWorker(false);
       lockstepHostActive = false;
       lockstepGuestActive = false;
@@ -1870,18 +1874,18 @@ if (
     if (mode === "lockstep") {
       const rom = insertedCassette?.bytes ?? lastBuiltRom;
       if (!rom) {
-        setNetplayHostStatus("ロックステップには先に ROM（ビルド or カセット）が必要です");
+        setNetplayHostStatus(t("netplay.needRom"));
         return;
       }
       lockstepHostActive = true;
       guestButtons = 0;
       lockstepHost.setLocalButtons(0);
-      setNetplayHostStatus("招待コードを生成中（ロックステップ）...");
+      setNetplayHostStatus(t("netplay.hostOfferGeneratingLockstep"));
       lockstepHost
         .start(rom, insertedCassette?.name ?? "game.nes", makeLockstepHooks(setNetplayHostStatus))
         .then((offerCode) => {
           netplayHostOfferEl.value = offerCode;
-          setNetplayHostStatus("招待コードを発行しました（ロックステップ）。ゲストに送ってください。");
+          setNetplayHostStatus(t("netplay.hostOfferReadyLockstep"));
         })
         .catch((err: unknown) => {
           lockstepHostActive = false;
@@ -1893,18 +1897,18 @@ if (
 
     lockstepHostActive = false;
     enableLockstepWorker(false);
-    setNetplayHostStatus("招待コードを生成中...");
+    setNetplayHostStatus(t("netplay.hostOfferGenerating"));
     netplayHost
       .start(
         canvas,
         (buttons) => applyGuestButtons(buttons),
         (state) => {
-          setNetplayHostStatus(`接続状態: ${state}`);
+          setNetplayHostStatus(t("netplay.connectionState", { state }));
         },
       )
       .then((offerCode) => {
         netplayHostOfferEl.value = offerCode;
-        setNetplayHostStatus("招待コードを発行しました。ゲストに送ってください。");
+        setNetplayHostStatus(t("netplay.hostOfferReady"));
       })
       .catch((err: unknown) => {
         setNetplayHostStatus(err instanceof Error ? err.message : String(err));
@@ -1919,7 +1923,7 @@ if (
         : netplayHost.completeConnection(netplayHostAnswerEl.value);
     complete
       .then(() => {
-        setNetplayHostStatus("応答コードを適用しました。接続中...");
+        setNetplayHostStatus(t("netplay.hostAnswerApplied"));
       })
       .catch((err: unknown) => {
         setNetplayHostStatus(err instanceof Error ? err.message : String(err));
@@ -1937,14 +1941,12 @@ if (
       lockstepGuestActive = true;
       guestButtons = 0;
       lockstepGuest.setLocalButtons(0);
-      setNetplayGuestStatus("応答コードを生成中（ロックステップ）...");
+      setNetplayGuestStatus(t("netplay.guestAnswerGeneratingLockstep"));
       lockstepGuest
         .join(netplayGuestOfferEl.value, makeLockstepHooks(setNetplayGuestStatus))
         .then((answerCode) => {
           netplayGuestAnswerEl.value = answerCode;
-          setNetplayGuestStatus(
-            "応答コードを発行しました。ホストに送り、ROM 受信を待ってください。",
-          );
+          setNetplayGuestStatus(t("netplay.guestAnswerReadyLockstep"));
         })
         .catch((err: unknown) => {
           lockstepGuestActive = false;
@@ -1956,18 +1958,18 @@ if (
 
     lockstepGuestActive = false;
     enableLockstepWorker(false);
-    setNetplayGuestStatus("応答コードを生成中...");
+    setNetplayGuestStatus(t("netplay.guestAnswerGenerating"));
     netplayGuest
       .join(
         netplayGuestOfferEl.value,
         netplayGuestVideoEl,
         (state) => {
-          setNetplayGuestStatus(`接続状態: ${state}`);
+          setNetplayGuestStatus(t("netplay.connectionState", { state }));
         },
       )
       .then((answerCode) => {
         netplayGuestAnswerEl.value = answerCode;
-        setNetplayGuestStatus("応答コードを発行しました。ホストに送ってください。");
+        setNetplayGuestStatus(t("netplay.guestAnswerReady"));
         netplayGuestActive = true;
       })
       .catch((err: unknown) => {

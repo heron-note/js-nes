@@ -28,24 +28,25 @@
       <div class="layout">
         <section class="screen-pane">
           <div class="screen-toolbar">
-            <button id="play-mode-btn" type="button">▶ 全画面</button>
-            <button id="exit-play-mode-btn" type="button" hidden>✕ 全画面を終了</button>
+            <button id="play-mode-btn" type="button" data-i18n="toolbar.fullscreen">▶ 全画面</button>
+            <button id="exit-play-mode-btn" type="button" hidden data-i18n="toolbar.exitFullscreen">✕ 全画面を終了</button>
           </div>
-          <canvas id="screen" width="256" height="240" aria-label="NES画面プレビュー"></canvas>
-          <p id="status" class="status">読み込み中...</p>
+          <canvas id="screen" width="256" height="240" data-i18n-aria="screen.aria" aria-label="NES画面プレビュー"></canvas>
+          <p id="status" class="status" data-i18n="status.loading">読み込み中...</p>
 
           <div class="pad-wrap">
-            <button type="button" id="pad-toggle-btn" class="pad-toggle-btn" aria-expanded="true" aria-controls="virtual-pad">
+            <button type="button" id="pad-toggle-btn" class="pad-toggle-btn" aria-expanded="true" aria-controls="virtual-pad" data-i18n="pad.toggleClose">
               パッドを閉じる
             </button>
-            <div class="pad" id="virtual-pad" aria-label="仮想コントローラ">
-              <div class="dpad" id="virtual-dpad" aria-label="十字キーと中央スティック">
-                <button type="button" data-dir="UP" class="dpad-btn dpad-up" aria-label="上">▲</button>
-                <button type="button" data-dir="LEFT" class="dpad-btn dpad-left" aria-label="左">◀</button>
+            <div class="pad" id="virtual-pad" data-i18n-aria="pad.aria" aria-label="仮想コントローラ">
+              <div class="dpad" id="virtual-dpad" data-i18n-aria="pad.dpadAria" aria-label="十字キーと中央スティック">
+                <button type="button" data-dir="UP" class="dpad-btn dpad-up" data-i18n-aria="pad.up" aria-label="上">▲</button>
+                <button type="button" data-dir="LEFT" class="dpad-btn dpad-left" data-i18n-aria="pad.left" aria-label="左">◀</button>
                 <div
                   class="stick stick-mini"
                   id="virtual-stick"
                   role="application"
+                  data-i18n-aria="pad.stickAria"
                   aria-label="中央の8方向スティック"
                   tabindex="0"
                 >
@@ -53,15 +54,15 @@
                     <div class="stick-knob" id="virtual-stick-knob"></div>
                   </div>
                 </div>
-                <button type="button" data-dir="RIGHT" class="dpad-btn dpad-right" aria-label="右">▶</button>
-                <button type="button" data-dir="DOWN" class="dpad-btn dpad-down" aria-label="下">▼</button>
+                <button type="button" data-dir="RIGHT" class="dpad-btn dpad-right" data-i18n-aria="pad.right" aria-label="右">▶</button>
+                <button type="button" data-dir="DOWN" class="dpad-btn dpad-down" data-i18n-aria="pad.down" aria-label="下">▼</button>
               </div>
               <div class="pad-center">
                 <div class="pad-center-row">
-                  <button type="button" id="screenshot-btn" class="pill pad-aux" title="スクリーンショット" aria-label="スクリーンショット">
+                  <button type="button" id="screenshot-btn" class="pill pad-aux" data-i18n-title="pad.screenshot" data-i18n-aria="pad.screenshot" title="スクリーンショット" aria-label="スクリーンショット">
                     📷
                   </button>
-                  <button type="button" id="record-btn" class="pill pad-aux" title="録画" aria-label="録画">
+                  <button type="button" id="record-btn" class="pill pad-aux" data-i18n-title="pad.record" data-i18n-aria="pad.record" title="録画" aria-label="録画">
                     ⏺
                   </button>
                 </div>
@@ -79,7 +80,7 @@
         </section>
 
         <section class="main-pane">
-          <nav class="mode-tabs" role="tablist" aria-label="Play または Create">
+          <nav class="mode-tabs" role="tablist" data-i18n-aria="modeTabs.aria" aria-label="Play または Create">
             <button type="button" role="tab" aria-selected="true" data-mode="play">Play</button>
             <button
               type="button"
@@ -88,9 +89,10 @@
               data-mode="create"
               disabled
               aria-disabled="true"
+              data-i18n-title="create.tabTitle"
               title="準備中"
             >
-              Create（準備中）
+              <span data-i18n="create.tabLabel">Create（準備中）</span>
             </button>
           </nav>
 
@@ -105,6 +107,7 @@
                   class="help-icon-btn"
                   aria-haspopup="dialog"
                   aria-controls="controls-help-dialog"
+                  data-i18n-title="controls.helpTitle"
                   title="操作方法"
                 >
                   ?
@@ -114,14 +117,14 @@
               <dialog id="controls-help-dialog" class="controls-help-dialog">
                 <form method="dialog" class="controls-help-form">
                   <header class="controls-help-header">
-                    <h3>操作方法</h3>
-                    <button type="submit" class="help-icon-btn" value="close" aria-label="閉じる">✕</button>
+                    <h3 data-i18n="controls.helpHeading">操作方法</h3>
+                    <button type="submit" class="help-icon-btn" value="close" data-i18n-aria="controls.close" aria-label="閉じる">✕</button>
                   </header>
                   <div class="controls-guide" id="controls-guide">
                     <div class="controls-guide-block">
-                      <h4>キーボード</h4>
+                      <h4 data-i18n="controls.keyboard">キーボード</h4>
                       <div class="key-guide-row">
-                        <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span>十字（中央スティックで斜めも可）</span>
+                        <kbd>↑</kbd><kbd>↓</kbd><kbd>←</kbd><kbd>→</kbd><span data-i18n="controls.keyboardDpad">十字（中央スティックで斜めも可）</span>
                       </div>
                       <div class="key-guide-row"><kbd>Z</kbd><span>B</span></div>
                       <div class="key-guide-row"><kbd>X</kbd><span>A</span></div>
@@ -129,17 +132,17 @@
                       <div class="key-guide-row"><kbd>Shift</kbd><span>SELECT</span></div>
                     </div>
                     <div class="controls-guide-block">
-                      <h4>ゲームパッド（Standard）</h4>
-                      <div class="key-guide-row"><span>左スティック / 十字</span><span>移動（8方向）</span></div>
+                      <h4 data-i18n="controls.gamepad">ゲームパッド（Standard）</h4>
+                      <div class="key-guide-row"><span data-i18n="controls.gamepadMove">左スティック / 十字</span><span data-i18n="controls.gamepadMoveAction">移動（8方向）</span></div>
                       <div class="key-guide-row"><kbd>B0</kbd><span>A</span></div>
                       <div class="key-guide-row"><kbd>B1</kbd><span>B</span></div>
                       <div class="key-guide-row"><kbd>B9</kbd><span>START</span></div>
                       <div class="key-guide-row"><kbd>B8</kbd><span>SELECT</span></div>
-                      <p id="gamepad-status" class="muted">ゲームパッド: 未接続</p>
+                      <p id="gamepad-status" class="muted" data-i18n="controls.gamepadDisconnected">ゲームパッド: 未接続</p>
                     </div>
                     <div class="controls-guide-block">
-                      <h4>画面上のコントローラ</h4>
-                      <p class="muted" style="margin: 0">
+                      <h4 data-i18n="controls.onScreen">画面上のコントローラ</h4>
+                      <p class="muted" style="margin: 0" data-i18n="controls.onScreenHint">
                         左のスティックは8方向（斜め対応）。SELECT / START / A / B はボタンです。
                       </p>
                     </div>
@@ -147,35 +150,36 @@
                 </form>
               </dialog>
 
-              <section class="cassette-deck" aria-label="カセットデッキ">
+              <section class="cassette-deck" data-i18n-aria="cassette.deckAria" aria-label="カセットデッキ">
                 <div class="cassette-slot" id="cassette-slot">
                   <div class="cassette-body" id="cassette-body" data-inserted="false">
                     <div class="cassette-notch" aria-hidden="true"></div>
-                    <p class="cassette-title" id="cassette-title">カセットなし</p>
-                    <p class="cassette-sub" id="cassette-sub">スロットは空いています。.nes / .zip をドロップしても刺せます</p>
+                    <p class="cassette-title" id="cassette-title" data-i18n="cassette.none">カセットなし</p>
+                    <p class="cassette-sub" id="cassette-sub" data-i18n="cassette.emptySub">スロットは空いています。.nes / .zip をドロップしても刺せます</p>
                   </div>
                 </div>
                 <div class="cassette-actions">
-                  <button type="button" id="cassette-insert-btn" class="cassette-btn">カセットを刺す</button>
-                  <button type="button" id="cassette-eject-btn" class="cassette-btn" disabled>カセットを抜く</button>
-                  <button type="button" id="cassette-reset-btn" class="cassette-btn cassette-btn-reset">リセット</button>
+                  <button type="button" id="cassette-insert-btn" class="cassette-btn" data-i18n="cassette.insert">カセットを刺す</button>
+                  <button type="button" id="cassette-eject-btn" class="cassette-btn" disabled data-i18n="cassette.eject">カセットを抜く</button>
+                  <button type="button" id="cassette-reset-btn" class="cassette-btn cassette-btn-reset" data-i18n="cassette.reset">リセット</button>
                   <button
                     type="button"
                     id="netplay-open-btn"
                     class="cassette-btn"
                     aria-haspopup="dialog"
                     aria-controls="netplay-dialog"
+                    data-i18n="netplay.open"
                   >
                     対戦
                   </button>
-                  <span id="netplay-badge" class="netplay-badge" hidden>未接続</span>
+                  <span id="netplay-badge" class="netplay-badge" hidden data-i18n="netplay.badgeDisconnected">未接続</span>
                 </div>
-                <div class="sample-rom-bar" aria-label="収録ソフト">
-                  <label class="sample-rom-label" for="sample-rom-select">収録ソフト</label>
+                <div class="sample-rom-bar" data-i18n-aria="sample.aria" aria-label="収録ソフト">
+                  <label class="sample-rom-label" for="sample-rom-select" data-i18n="sample.label">収録ソフト</label>
                   <select id="sample-rom-select" class="sample-rom-select" disabled>
-                    <option value="">読み込み中…</option>
+                    <option value="" data-i18n="sample.loading">読み込み中…</option>
                   </select>
-                  <button type="button" id="sample-rom-play-btn" class="cassette-btn" disabled>読み込む</button>
+                  <button type="button" id="sample-rom-play-btn" class="cassette-btn" disabled data-i18n="sample.load">読み込む</button>
                 </div>
                 <div id="sample-rom-blurb" class="sample-rom-blurb" hidden>
                   <p id="sample-rom-summary" class="sample-rom-summary"></p>
@@ -188,123 +192,129 @@
               <dialog id="netplay-dialog" class="netplay-dialog">
                 <div class="netplay-dialog-inner">
                   <header class="netplay-dialog-header">
-                    <h3>オンライン対戦</h3>
-                    <button type="button" id="netplay-dialog-close" class="help-icon-btn" aria-label="閉じる">
+                    <h3 data-i18n="netplay.title">オンライン対戦</h3>
+                    <button type="button" id="netplay-dialog-close" class="help-icon-btn" data-i18n-aria="controls.close" aria-label="閉じる">
                       ✕
                     </button>
                   </header>
-                  <p class="muted netplay-dialog-lead">
+                  <p class="muted netplay-dialog-lead" data-i18n="netplay.lead">
                     P2P（WebRTC）の 2コン対戦。メイン画面は閉じたまま遊べます。招待のやり取りはまだ手動です。
                   </p>
 
-                  <div class="netplay-role-picker" id="netplay-role-picker" role="group" aria-label="役割">
-                    <button type="button" class="netplay-pick-btn" data-netplay-role="host">部屋を作る（1コン）</button>
-                    <button type="button" class="netplay-pick-btn" data-netplay-role="guest">部屋に入る（2コン）</button>
+                  <div class="netplay-role-picker" id="netplay-role-picker" role="group" data-i18n-aria="netplay.roleAria" aria-label="役割">
+                    <button type="button" class="netplay-pick-btn" data-netplay-role="host" data-i18n="netplay.hostPick">部屋を作る（1コン）</button>
+                    <button type="button" class="netplay-pick-btn" data-netplay-role="guest" data-i18n="netplay.guestPick">部屋に入る（2コン）</button>
                   </div>
-                  <button type="button" id="netplay-role-back" class="netplay-back-btn" hidden>← 役割を選び直す</button>
+                  <button type="button" id="netplay-role-back" class="netplay-back-btn" hidden data-i18n="netplay.roleBack">← 役割を選び直す</button>
 
                   <details class="netplay-mode-details">
-                    <summary>同期方式（上級）</summary>
+                    <summary data-i18n="netplay.modeSummary">同期方式（上級）</summary>
                     <fieldset class="netplay-mode">
-                      <legend>同期方式</legend>
+                      <legend data-i18n="netplay.modeLegend">同期方式</legend>
                       <label>
                         <input type="radio" name="netplay-mode" value="stream" checked />
-                        画面共有（Phase1・映像配信）
+                        <span data-i18n="netplay.modeStream">画面共有（Phase1・映像配信）</span>
                       </label>
                       <label>
                         <input type="radio" name="netplay-mode" value="lockstep" />
-                        ロックステップ（実験・ROM転送＋双方エミュ）
+                        <span data-i18n="netplay.modeLockstep">ロックステップ（実験・ROM転送＋双方エミュ）</span>
                       </label>
                     </fieldset>
-                    <p id="netplay-mode-hint" class="muted">
+                    <p id="netplay-mode-hint" class="muted" data-i18n="netplay.modeHint">
                       画面共有: ゲストは ROM 不要。映像遅延あり。ロックステップ: 接続時に ROM を渡し、入力数バイトだけ同期。
                     </p>
                   </details>
 
                   <div class="netplay-roles">
                     <section class="netplay-role" data-netplay-panel="host" hidden>
-                      <h3>ホスト（1コン）</h3>
-                      <button id="netplay-host-start" type="button">ホストとして開始</button>
-                      <label class="netplay-label">① 招待コードをコピーしてゲストに送る</label>
+                      <h3 data-i18n="netplay.hostHeading">ホスト（1コン）</h3>
+                      <button id="netplay-host-start" type="button" data-i18n="netplay.hostStart">ホストとして開始</button>
+                      <label class="netplay-label" data-i18n="netplay.hostOfferLabel">① 招待コードをコピーしてゲストに送る</label>
                       <textarea
                         id="netplay-host-offer"
                         class="netplay-code"
                         readonly
                         rows="3"
+                        data-i18n-placeholder="netplay.hostOfferPlaceholder"
                         placeholder="ここに招待コードが表示されます"
                       ></textarea>
-                      <label class="netplay-label">② ゲストから届いた応答コードを貼り付けて接続</label>
+                      <label class="netplay-label" data-i18n="netplay.hostAnswerLabel">② ゲストから届いた応答コードを貼り付けて接続</label>
                       <textarea
                         id="netplay-host-answer"
                         class="netplay-code"
                         rows="3"
+                        data-i18n-placeholder="netplay.hostAnswerPlaceholder"
                         placeholder="ゲストの応答コードを貼り付け"
                       ></textarea>
-                      <button id="netplay-host-connect" type="button">応答コードで接続</button>
-                      <p id="netplay-host-status" class="muted">未接続</p>
+                      <button id="netplay-host-connect" type="button" data-i18n="netplay.hostConnect">応答コードで接続</button>
+                      <p id="netplay-host-status" class="muted" data-i18n="netplay.badgeDisconnected">未接続</p>
                     </section>
 
                     <section class="netplay-role" data-netplay-panel="guest" hidden>
-                      <h3>ゲスト（2コン）</h3>
-                      <label class="netplay-label">① ホストから届いた招待コードを貼り付け</label>
+                      <h3 data-i18n="netplay.guestHeading">ゲスト（2コン）</h3>
+                      <label class="netplay-label" data-i18n="netplay.guestOfferLabel">① ホストから届いた招待コードを貼り付け</label>
                       <textarea
                         id="netplay-guest-offer"
                         class="netplay-code"
                         rows="3"
+                        data-i18n-placeholder="netplay.guestOfferPlaceholder"
                         placeholder="ホストの招待コードを貼り付け"
                       ></textarea>
-                      <button id="netplay-guest-join" type="button">参加して応答コードを生成</button>
-                      <label class="netplay-label">② 生成された応答コードをホストに送る</label>
+                      <button id="netplay-guest-join" type="button" data-i18n="netplay.guestJoin">参加して応答コードを生成</button>
+                      <label class="netplay-label" data-i18n="netplay.guestAnswerLabel">② 生成された応答コードをホストに送る</label>
                       <textarea
                         id="netplay-guest-answer"
                         class="netplay-code"
                         readonly
                         rows="3"
+                        data-i18n-placeholder="netplay.guestAnswerPlaceholder"
                         placeholder="ここに応答コードが表示されます"
                       ></textarea>
-                      <p id="netplay-guest-status" class="muted">未接続</p>
+                      <p id="netplay-guest-status" class="muted" data-i18n="netplay.badgeDisconnected">未接続</p>
                       <video id="netplay-guest-video" class="netplay-video" autoplay playsinline muted></video>
                     </section>
                   </div>
                 </div>
               </dialog>
 
-              <section class="cloud-panel" id="github-cloud-panel" aria-label="GitHubクラウド">
+              <section class="cloud-panel" id="github-cloud-panel" data-i18n-aria="github.panelAria" aria-label="GitHubクラウド">
                 <div class="cloud-heading">
-                  <h3>GitHub 倉庫</h3>
-                  <p id="github-user-label" class="muted">未ログイン</p>
+                  <h3 data-i18n="github.heading">GitHub 倉庫</h3>
+                  <p id="github-user-label" class="muted" data-i18n="github.loggedOut">未ログイン</p>
                 </div>
-                <p class="muted">
+                <p class="muted" data-i18n-html="github.introHtml">
                   自分の Private リポジトリ（<code>herocon-data</code>）にカセットとプロジェクトを保存できます。
                 </p>
                 <div class="cloud-actions">
-                  <button type="button" id="github-login-btn" class="cassette-btn">GitHub でログイン</button>
-                  <button type="button" id="github-logout-btn" class="cassette-btn" hidden>ログアウト</button>
+                  <button type="button" id="github-login-btn" class="cassette-btn" data-i18n="github.login">GitHub でログイン</button>
+                  <button type="button" id="github-logout-btn" class="cassette-btn" hidden data-i18n="github.logout">ログアウト</button>
                 </div>
                 <p id="github-auth-status" class="muted cassette-status" aria-live="polite"></p>
                 <div id="github-device-hint" class="github-device-hint" hidden>
                   <p>
-                    GitHub を開き、コード <strong id="github-user-code"></strong> を入力してください。
+                    <span data-i18n="github.deviceBefore">GitHub を開き、コード</span>
+                    <strong id="github-user-code"></strong>
+                    <span data-i18n="github.deviceAfter">を入力してください。</span>
                   </p>
                   <p>
-                    <a id="github-verify-link" href="#" target="_blank" rel="noopener noreferrer">認証ページを開く</a>
+                    <a id="github-verify-link" href="#" target="_blank" rel="noopener noreferrer" data-i18n="github.verifyLink">認証ページを開く</a>
                   </p>
                 </div>
 
                 <div id="github-cloud-controls" class="github-cloud-controls" hidden>
-                  <h4>倉庫のカセット</h4>
+                  <h4 data-i18n="github.romsHeading">倉庫のカセット</h4>
                   <div class="cloud-row">
-                    <select id="github-rom-select" aria-label="倉庫のカセット"></select>
-                    <button type="button" id="github-rom-load-btn" class="cassette-btn">刺す</button>
-                    <button type="button" id="github-rom-save-btn" class="cassette-btn">今のカセットを保存</button>
-                    <button type="button" id="github-rom-refresh-btn" class="cassette-btn">更新</button>
+                    <select id="github-rom-select" data-i18n-aria="github.romsAria" aria-label="倉庫のカセット"></select>
+                    <button type="button" id="github-rom-load-btn" class="cassette-btn" data-i18n="github.romLoad">刺す</button>
+                    <button type="button" id="github-rom-save-btn" class="cassette-btn" data-i18n="github.romSave">今のカセットを保存</button>
+                    <button type="button" id="github-rom-refresh-btn" class="cassette-btn" data-i18n="github.refresh">更新</button>
                   </div>
-                  <h4>倉庫のプロジェクト</h4>
+                  <h4 data-i18n="github.projectsHeading">倉庫のプロジェクト</h4>
                   <div class="cloud-row">
-                    <select id="github-project-select" aria-label="倉庫のプロジェクト"></select>
-                    <button type="button" id="github-project-load-btn" class="cassette-btn">開く</button>
-                    <button type="button" id="github-project-save-btn" class="cassette-btn">今のプロジェクトを保存</button>
-                    <button type="button" id="github-project-refresh-btn" class="cassette-btn">更新</button>
+                    <select id="github-project-select" data-i18n-aria="github.projectsAria" aria-label="倉庫のプロジェクト"></select>
+                    <button type="button" id="github-project-load-btn" class="cassette-btn" data-i18n="github.projectLoad">開く</button>
+                    <button type="button" id="github-project-save-btn" class="cassette-btn" data-i18n="github.projectSave">今のプロジェクトを保存</button>
+                    <button type="button" id="github-project-refresh-btn" class="cassette-btn" data-i18n="github.refresh">更新</button>
                   </div>
                 </div>
               </section>
