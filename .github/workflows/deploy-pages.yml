@@ -24,7 +24,7 @@ jobs:
           node-version: 20
       - run: npm ci
       - run: npm test --workspaces --if-present
-      - run: npm run build:unoptimized --workspace apps/web
+      - run: npm run build --workspace apps/web
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

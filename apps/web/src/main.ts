@@ -91,11 +91,6 @@ const loadRomResultHandlers: Partial<Record<LoadRomContext, (ok: boolean, messag
 
 nesWorker.onmessage = (e: MessageEvent<NesWorkerOutboundMessage>) => {
   const msg = e.data;
-  // TEMP DEBUG: Workerからの計装ログをメインスレッドのconsoleへ中継（原因切り分け用）
-  if ((msg as unknown as { type: string }).type === "debugLog") {
-    console.log((msg as unknown as { text: string }).text);
-    return;
-  }
   switch (msg.type) {
     case "frame":
       latestFramebuffer = msg.framebuffer;

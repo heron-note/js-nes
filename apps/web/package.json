@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/inline-standalone.mjs",
-    "build:unoptimized": "vite build --mode unoptimized && node scripts/inline-standalone.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

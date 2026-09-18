@@ -24,15 +24,6 @@ let crashed = false;
 const FRAME_MS = 1000 / 60;
 let nextFrameAt = 0;
 
-// TEMP DEBUG: フレーム単位のticks/secだけ残す（命令ごとのperformance.nowはホットパスを壊すため撤去）
-let debugTickCount = 0;
-let debugLastLogAt = 0;
-let debugRunFrameMsSum = 0;
-let debugPostMsSum = 0;
-let debugMaxRunFrameMs = 0;
-let debugWorkerInstanceId = Math.random().toString(36).slice(2, 8);
-console.log("[nesWorker TEMP DEBUG] worker instance created:", debugWorkerInstanceId);
-
 function post(message: NesWorkerOutboundMessage, transfer: Transferable[] = []): void {
   ctx.postMessage(message, transfer);
 }
@@ -50,11 +41,6 @@ function scheduleNext(): void {
 function tick(): void {
   if (crashed) return;
 
-  // TEMP DEBUG: 1秒ごとに実際のtick頻度・内訳(runFrame/後処理)・ドリフト量を
-  // メインスレッドへ中継してログする（原因切り分け用）
-  const tickStart = performance.now();
-  debugTickCount++;
-
   try {
     nes.runFrame();
   } catch (err) {
@@ -62,30 +48,10 @@ function tick(): void {
     post({ type: "fatalError", message: err instanceof Error ? err.message : String(err) });
     return; // 決定論的に再現するクラッシュなので再スケジュールしない（ページ再読み込みで復旧）
   }
-  const afterRunFrame = performance.now();
 
   const framebuffer = new Uint8ClampedArray(nes.ppu.framebuffer); // PPUの生バッファは転送せず必ずコピー
   const channelSnapshots = [0, 1, 2, 3].map((c) => nes.apu.getChannelState(c as 0 | 1 | 2 | 3));
   post({ type: "frame", framebuffer, channelSnapshots }, [framebuffer.buffer]);
-  const afterPost = performance.now();
-
-  debugRunFrameMsSum += afterRunFrame - tickStart;
-  debugPostMsSum += afterPost - afterRunFrame;
-  debugMaxRunFrameMs = Math.max(debugMaxRunFrameMs, afterRunFrame - tickStart);
-  if (tickStart - debugLastLogAt >= 1000) {
-    const debugMsg =
-      `[nesWorker TEMP DEBUG ${debugWorkerInstanceId}] ticks/sec=${debugTickCount} ` +
-      `drift(ms)=${(tickStart - nextFrameAt).toFixed(1)} ` +
-      `avgRunFrame(ms)=${(debugRunFrameMsSum / debugTickCount).toFixed(2)} ` +
-      `maxRunFrame(ms)=${debugMaxRunFrameMs.toFixed(2)} ` +
-      `avgPost(ms)=${(debugPostMsSum / debugTickCount).toFixed(2)}`;
-    ctx.postMessage({ type: "debugLog", text: debugMsg } as unknown as NesWorkerOutboundMessage);
-    debugTickCount = 0;
-    debugLastLogAt = tickStart;
-    debugRunFrameMsSum = 0;
-    debugPostMsSum = 0;
-    debugMaxRunFrameMs = 0;
-  }
 
   // audioPort未接続の間（AudioContext起動前のジェスチャー待ち等）はAPU内部の
   // サンプルバッファが無制限に膨らまないよう、届け先が無くても必ず取り出して捨てる。
