@@ -130,10 +130,104 @@
                   <button type="button" id="cassette-insert-btn" class="cassette-btn">カセットを刺す</button>
                   <button type="button" id="cassette-eject-btn" class="cassette-btn" disabled>カセットを抜く</button>
                   <button type="button" id="cassette-reset-btn" class="cassette-btn cassette-btn-reset">リセット</button>
+                  <button
+                    type="button"
+                    id="netplay-open-btn"
+                    class="cassette-btn"
+                    aria-haspopup="dialog"
+                    aria-controls="netplay-dialog"
+                  >
+                    対戦
+                  </button>
+                  <span id="netplay-badge" class="netplay-badge" hidden>未接続</span>
                 </div>
                 <input id="rom-upload-input" type="file" accept=".nes" hidden />
                 <p id="rom-upload-status" class="muted cassette-status" aria-live="polite"></p>
               </section>
+
+              <dialog id="netplay-dialog" class="netplay-dialog">
+                <div class="netplay-dialog-inner">
+                  <header class="netplay-dialog-header">
+                    <h3>オンライン対戦</h3>
+                    <button type="button" id="netplay-dialog-close" class="help-icon-btn" aria-label="閉じる">
+                      ✕
+                    </button>
+                  </header>
+                  <p class="muted netplay-dialog-lead">
+                    P2P（WebRTC）の 2コン対戦。メイン画面は閉じたまま遊べます。招待のやり取りはまだ手動です。
+                  </p>
+
+                  <div class="netplay-role-picker" id="netplay-role-picker" role="group" aria-label="役割">
+                    <button type="button" class="netplay-pick-btn" data-netplay-role="host">部屋を作る（1コン）</button>
+                    <button type="button" class="netplay-pick-btn" data-netplay-role="guest">部屋に入る（2コン）</button>
+                  </div>
+                  <button type="button" id="netplay-role-back" class="netplay-back-btn" hidden>← 役割を選び直す</button>
+
+                  <details class="netplay-mode-details">
+                    <summary>同期方式（上級）</summary>
+                    <fieldset class="netplay-mode">
+                      <legend>同期方式</legend>
+                      <label>
+                        <input type="radio" name="netplay-mode" value="stream" checked />
+                        画面共有（Phase1・映像配信）
+                      </label>
+                      <label>
+                        <input type="radio" name="netplay-mode" value="lockstep" />
+                        ロックステップ（実験・ROM転送＋双方エミュ）
+                      </label>
+                    </fieldset>
+                    <p id="netplay-mode-hint" class="muted">
+                      画面共有: ゲストは ROM 不要。映像遅延あり。ロックステップ: 接続時に ROM を渡し、入力数バイトだけ同期。
+                    </p>
+                  </details>
+
+                  <div class="netplay-roles">
+                    <section class="netplay-role" data-netplay-panel="host" hidden>
+                      <h3>ホスト（1コン）</h3>
+                      <button id="netplay-host-start" type="button">ホストとして開始</button>
+                      <label class="netplay-label">① 招待コードをコピーしてゲストに送る</label>
+                      <textarea
+                        id="netplay-host-offer"
+                        class="netplay-code"
+                        readonly
+                        rows="3"
+                        placeholder="ここに招待コードが表示されます"
+                      ></textarea>
+                      <label class="netplay-label">② ゲストから届いた応答コードを貼り付けて接続</label>
+                      <textarea
+                        id="netplay-host-answer"
+                        class="netplay-code"
+                        rows="3"
+                        placeholder="ゲストの応答コードを貼り付け"
+                      ></textarea>
+                      <button id="netplay-host-connect" type="button">応答コードで接続</button>
+                      <p id="netplay-host-status" class="muted">未接続</p>
+                    </section>
+
+                    <section class="netplay-role" data-netplay-panel="guest" hidden>
+                      <h3>ゲスト（2コン）</h3>
+                      <label class="netplay-label">① ホストから届いた招待コードを貼り付け</label>
+                      <textarea
+                        id="netplay-guest-offer"
+                        class="netplay-code"
+                        rows="3"
+                        placeholder="ホストの招待コードを貼り付け"
+                      ></textarea>
+                      <button id="netplay-guest-join" type="button">参加して応答コードを生成</button>
+                      <label class="netplay-label">② 生成された応答コードをホストに送る</label>
+                      <textarea
+                        id="netplay-guest-answer"
+                        class="netplay-code"
+                        readonly
+                        rows="3"
+                        placeholder="ここに応答コードが表示されます"
+                      ></textarea>
+                      <p id="netplay-guest-status" class="muted">未接続</p>
+                      <video id="netplay-guest-video" class="netplay-video" autoplay playsinline muted></video>
+                    </section>
+                  </div>
+                </div>
+              </dialog>
 
               <section class="cloud-panel" id="github-cloud-panel" aria-label="GitHubクラウド">
                 <div class="cloud-heading">
@@ -175,69 +269,28 @@
                   </div>
                 </div>
               </section>
-
-              <h3 style="margin-top: 28px">オンライン対戦</h3>
-              <p class="muted">
-                サーバーなしの P2P（WebRTC）で 2コン対戦。招待コードを手動でやり取りします。
-              </p>
-              <div class="netplay-roles">
-                <section class="netplay-role">
-                  <h3>ホストになる（1コン）</h3>
-                  <button id="netplay-host-start" type="button">ホストとして開始</button>
-                  <label class="netplay-label">① 招待コードをコピーしてゲストに送る</label>
-                  <textarea
-                    id="netplay-host-offer"
-                    class="netplay-code"
-                    readonly
-                    rows="3"
-                    placeholder="ここに招待コードが表示されます"
-                  ></textarea>
-                  <label class="netplay-label">② ゲストから届いた応答コードを貼り付けて接続</label>
-                  <textarea
-                    id="netplay-host-answer"
-                    class="netplay-code"
-                    rows="3"
-                    placeholder="ゲストの応答コードを貼り付け"
-                  ></textarea>
-                  <button id="netplay-host-connect" type="button">応答コードで接続</button>
-                  <p id="netplay-host-status" class="muted">未接続</p>
-                </section>
-
-                <section class="netplay-role">
-                  <h3>ゲストとして参加（2コン）</h3>
-                  <label class="netplay-label">① ホストから届いた招待コードを貼り付け</label>
-                  <textarea
-                    id="netplay-guest-offer"
-                    class="netplay-code"
-                    rows="3"
-                    placeholder="ホストの招待コードを貼り付け"
-                  ></textarea>
-                  <button id="netplay-guest-join" type="button">参加して応答コードを生成</button>
-                  <label class="netplay-label">② 生成された応答コードをホストに送る</label>
-                  <textarea
-                    id="netplay-guest-answer"
-                    class="netplay-code"
-                    readonly
-                    rows="3"
-                    placeholder="ここに応答コードが表示されます"
-                  ></textarea>
-                  <p id="netplay-guest-status" class="muted">未接続</p>
-                  <video id="netplay-guest-video" class="netplay-video" autoplay playsinline muted></video>
-                </section>
-              </div>
             </div>
 
             <!-- ===== Create ===== -->
             <div class="mode-panel" data-mode-panel="create" role="tabpanel" hidden>
               <nav class="tabs" role="tablist" aria-label="Create ツール">
-                <button type="button" role="tab" aria-selected="true" data-tab="build">ビルド&amp;配布</button>
-                <button type="button" role="tab" aria-selected="false" data-tab="parts">パーツ</button>
-                <button type="button" role="tab" aria-selected="false" data-tab="scenes">シーン</button>
-                <button type="button" role="tab" aria-selected="false" data-tab="sound">音源</button>
+                <button type="button" role="tab" aria-selected="true" data-tab="project">プロジェクト</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="build">ビルド&amp;配布</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="parts">パーツ（旧）</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="scenes">シーン（旧）</button>
+                <button type="button" role="tab" aria-selected="false" data-tab="sound">音源（旧）</button>
               </nav>
 
               <div class="panels">
-                <div class="panel active" data-panel="build">
+                <div class="panel active" data-panel="project">
+                  <p class="muted create-v3-banner">
+                    Create v3（試作）: マッパーを根にしたツリーで資産を辿ります。描画・ブロック本接続・ビルドは後続。
+                    仕様は <code>docs/09_CREATE_PROJECT_MODEL.md</code>。
+                  </p>
+                  <div id="create-explorer-root"></div>
+                </div>
+
+                <div class="panel" data-panel="build">
                   <h2>ビルド&amp;配布</h2>
                   <p class="muted">
                     パーツとシーンを結合して .nes にコンパイルし、左のプレビューで実行します。
@@ -307,24 +360,25 @@
 
                   <div id="part-editor" hidden>
                     <div class="subtabs" role="tablist" aria-label="パーツの編集方法">
-                      <button type="button" role="tab" aria-selected="true" data-subtab="code">コード</button>
-                      <button type="button" role="tab" aria-selected="false" data-subtab="blocks">ブロック</button>
+                      <button type="button" role="tab" aria-selected="true" data-subtab="blocks">ブロック</button>
+                      <button type="button" role="tab" aria-selected="false" data-subtab="code">コード</button>
                     </div>
 
-                    <div class="subpanel active" data-subpanel="code">
+                    <div class="subpanel active" data-subpanel="blocks">
+                      <p class="muted">ブロックを組み立ててゲームの動きを作ります。必要なら「コード」タブでテキストも確認できます。</p>
+                      <div id="part-block-workspace" class="block-workspace"></div>
+                      <div class="code-actions">
+                        <button id="part-blocks-build-btn" type="button">ブロックからコードを生成</button>
+                        <span id="part-blocks-status" class="muted"></span>
+                      </div>
+                    </div>
+                    <div class="subpanel" data-subpanel="code">
                       <p class="muted">
                         <code>field 名前 = 初期値;</code> と
                         <code>behavior 名前(self) { ... }</code> で書きます。仕様は
                         <code>docs/03_DSL_SPEC.md</code> を参照。
                       </p>
                       <textarea id="part-code-editor" class="dsl-textarea" spellcheck="false" rows="14"></textarea>
-                    </div>
-                    <div class="subpanel" data-subpanel="blocks">
-                      <div id="part-block-workspace" class="block-workspace"></div>
-                      <div class="code-actions">
-                        <button id="part-blocks-build-btn" type="button">ブロックからコードを生成</button>
-                        <span id="part-blocks-status" class="muted"></span>
-                      </div>
                     </div>
 
                     <h3 style="margin-top: 20px">ドット絵（このパーツ専用）</h3>
@@ -370,24 +424,25 @@
 
                   <div id="scene-editor" hidden>
                     <div class="subtabs" role="tablist" aria-label="シーンの編集方法">
-                      <button type="button" role="tab" aria-selected="true" data-subtab="code">コード</button>
-                      <button type="button" role="tab" aria-selected="false" data-subtab="blocks">ブロック</button>
+                      <button type="button" role="tab" aria-selected="true" data-subtab="blocks">ブロック</button>
+                      <button type="button" role="tab" aria-selected="false" data-subtab="code">コード</button>
                     </div>
 
-                    <div class="subpanel active" data-subpanel="code">
+                    <div class="subpanel active" data-subpanel="blocks">
+                      <p class="muted">パーツの配置と進行をブロックで組み立てます。</p>
+                      <div id="scene-block-workspace" class="block-workspace"></div>
+                      <div class="code-actions">
+                        <button id="scene-blocks-build-btn" type="button">ブロックからコードを生成</button>
+                        <span id="scene-blocks-status" class="muted"></span>
+                      </div>
+                    </div>
+                    <div class="subpanel" data-subpanel="code">
                       <p class="muted">
                         <code>instance 名前: パーツ種別;</code> と
                         <code>function init() {}</code> /
                         <code>function update() {}</code> で書きます。
                       </p>
                       <textarea id="scene-code-editor" class="dsl-textarea" spellcheck="false" rows="14"></textarea>
-                    </div>
-                    <div class="subpanel" data-subpanel="blocks">
-                      <div id="scene-block-workspace" class="block-workspace"></div>
-                      <div class="code-actions">
-                        <button id="scene-blocks-build-btn" type="button">ブロックからコードを生成</button>
-                        <span id="scene-blocks-status" class="muted"></span>
-                      </div>
                     </div>
                   </div>
                 </div>

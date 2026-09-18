@@ -5,13 +5,20 @@ import { getTiles, initSpriteEditor, setTiles } from "./spriteEditor.js";
 import { AudioEngine, noteIndexToLabel } from "./audio.js";
 import { downloadCanvasAsPng, renderCartridgeLabel } from "./cartridgeLabel.js";
 import { exportStandaloneHtml } from "./standaloneExport.js";
-import { NetplayGuest, NetplayHost } from "./netplay.js";
+import { LockstepGuest, LockstepHost, NetplayGuest, NetplayHost } from "./netplay.js";
 import NesWorkerCtor from "./nesWorker.ts?worker&inline";
 import type { LoadRomContext, NesWorkerOutboundMessage } from "./nesWorkerProtocol.js";
 import { pollGamepad, type GamepadButtonState } from "./gamepad.js";
 import { applyDirDiff, bindVirtualStick, type DirState } from "./virtualStick.js";
 import * as Blockly from "blockly/core";
-import { generatePartBody, generateSceneBody, initBlockEditor } from "./blocks/blockEditor.js";
+import {
+  generatePartBody,
+  generateSceneBody,
+  initBlockEditor,
+  loadDefaultMainSceneBlocks,
+  loadDefaultMoverPartBlocks,
+  loadDefaultPlayerPartBlocks,
+} from "./blocks/blockEditor.js";
 import { PART_TOOLBOX, SCENE_TOOLBOX } from "./blocks/toolbox.js";
 import {
   createEmptyProject,
@@ -24,6 +31,12 @@ import {
   type ProjectPart,
   type ProjectScene,
 } from "./project.js";
+import {
+  loadProjectV3FromLocalStorage,
+  migrateProjectV2toV3,
+  saveProjectV3ToLocalStorage,
+} from "./projectV3.js";
+import { mountCreateExplorer } from "./createExplorer.js";
 import { buildProjectAssets, buildProjectSource, ProjectBuildError } from "./projectBuild.js";
 import {
   clearStoredToken,
@@ -116,6 +129,14 @@ nesWorker.onmessage = (e: MessageEvent<NesWorkerOutboundMessage>) => {
     case "frame":
       latestFramebuffer = msg.framebuffer;
       latestChannelSnapshots = msg.channelSnapshots;
+      if (
+        msg.frame !== undefined &&
+        msg.hash !== undefined &&
+        (lockstepHostActive || lockstepGuestActive)
+      ) {
+        const peer = lockstepHostActive ? lockstepHost : lockstepGuest;
+        peer.reportFramebufferHash(msg.frame, msg.hash);
+      }
       break;
     case "loadRomResult":
       loadRomResultHandlers[msg.context]?.(msg.ok, msg.message);
@@ -241,6 +262,39 @@ let sceneBlockWorkspace: Blockly.WorkspaceSvg | null = null;
 if (partBlockWorkspaceEl) partBlockWorkspace = initBlockEditor(partBlockWorkspaceEl, PART_TOOLBOX);
 if (sceneBlockWorkspaceEl) sceneBlockWorkspace = initBlockEditor(sceneBlockWorkspaceEl, SCENE_TOOLBOX);
 
+/** Blockly serialization が空（または未設定）かどうか。 */
+function isEmptyBlockState(blocks: unknown): boolean {
+  if (!blocks || typeof blocks !== "object") return true;
+  const state = blocks as { blocks?: unknown[] };
+  return !Array.isArray(state.blocks) || state.blocks.length === 0;
+}
+
+/** デフォルトサンプルに、コードと対になるブロックを載せる（ブロック＝主編集面）。 */
+function seedDefaultProjectBlocks(proj: Project): void {
+  if (!partBlockWorkspace || !sceneBlockWorkspace) return;
+  if (proj.title !== "サンプル") return;
+  const player = proj.parts.find((p) => p.name === "Player");
+  const mover = proj.parts.find((p) => p.name === "Mover");
+  const main = proj.scenes.find((s) => s.name === "Main");
+  if (player && isEmptyBlockState(player.blocks)) {
+    loadDefaultPlayerPartBlocks(partBlockWorkspace);
+    player.blocks = Blockly.serialization.workspaces.save(partBlockWorkspace);
+    player.code = generatePartBody(partBlockWorkspace);
+  }
+  if (mover && isEmptyBlockState(mover.blocks)) {
+    loadDefaultMoverPartBlocks(partBlockWorkspace);
+    mover.blocks = Blockly.serialization.workspaces.save(partBlockWorkspace);
+    mover.code = generatePartBody(partBlockWorkspace);
+  }
+  if (main && isEmptyBlockState(main.blocks)) {
+    loadDefaultMainSceneBlocks(sceneBlockWorkspace);
+    main.blocks = Blockly.serialization.workspaces.save(sceneBlockWorkspace);
+    main.code = generateSceneBody(sceneBlockWorkspace);
+  }
+  partBlockWorkspace.clear();
+  sceneBlockWorkspace.clear();
+}
+
 const VALID_NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 function promptForName(message: string, existing: string[], initial = ""): string | null {
@@ -363,6 +417,10 @@ partDeleteBtn?.addEventListener("click", () => {
 
 partBlocksBuildBtn?.addEventListener("click", () => {
   if (!partBlockWorkspace || !partCodeEditor) return;
+  if (partBlockWorkspace.getAllBlocks(false).length === 0) {
+    if (partBlocksStatus) partBlocksStatus.textContent = "ブロックがありません。左のカテゴリから置いてください";
+    return;
+  }
   partCodeEditor.value = generatePartBody(partBlockWorkspace);
   if (partBlocksStatus) partBlocksStatus.textContent = "コードを生成しました（「コード」タブで確認できます）";
 });
@@ -463,6 +521,10 @@ sceneDeleteBtn?.addEventListener("click", () => {
 
 sceneBlocksBuildBtn?.addEventListener("click", () => {
   if (!sceneBlockWorkspace || !sceneCodeEditor) return;
+  if (sceneBlockWorkspace.getAllBlocks(false).length === 0) {
+    if (sceneBlocksStatus) sceneBlocksStatus.textContent = "ブロックがありません。左のカテゴリから置いてください";
+    return;
+  }
   sceneCodeEditor.value = generateSceneBody(sceneBlockWorkspace);
   if (sceneBlocksStatus) sceneBlocksStatus.textContent = "コードを生成しました（「コード」タブで確認できます）";
 });
@@ -595,9 +657,21 @@ if (embeddedRomB64) {
 } else {
   const savedProject = loadProjectFromLocalStorage();
   if (savedProject) project = savedProject;
+  seedDefaultProjectBlocks(project);
   if (project.title) cartTitleInput.value = project.title;
   if (project.author) cartAuthorInput.value = project.author;
 }
+
+// --- Create v3 エクスプローラ（ビルドは当面 v2 のまま並行） ---
+let projectV3 = loadProjectV3FromLocalStorage() ?? migrateProjectV2toV3(project);
+const createExplorerRoot = document.querySelector<HTMLElement>("#create-explorer-root");
+if (createExplorerRoot) {
+  mountCreateExplorer(createExplorerRoot, projectV3, (next) => {
+    projectV3 = next;
+    saveProjectV3ToLocalStorage(next);
+  });
+}
+
 refreshPartSelect();
 refreshSceneSelect();
 if (project.parts.length > 0) selectPart(0);
@@ -1239,20 +1313,25 @@ soundSaveBtn?.addEventListener("click", () => {
   soundSaveStatus.textContent = `「${name}」を保存しました。コードから playSound(${name}) で呼び出せます`;
 });
 
-// --- 入力（キーボード/仮想パッド共通）。ネットプレイのゲストモード時は
-//     ローカルのcontroller1ではなくWebRTC経由でホストへ送る（M8）。 ---
+// --- 入力（キーボード/仮想パッド共通）。
+//     streamゲスト: ホストへボタン送信 / lockstep: ローカル生入力をセッションへ ---
 let netplayGuestActive = false;
+let lockstepHostActive = false;
+let lockstepGuestActive = false;
 let guestButtons = 0;
 
 function setLocalButton(name: ButtonName, pressed: boolean): void {
-  if (netplayGuestActive) {
-    const bit = BUTTON[name];
+  const bit = BUTTON[name];
+  if (netplayGuestActive || lockstepGuestActive || lockstepHostActive) {
     if (pressed) guestButtons |= 1 << bit;
     else guestButtons &= ~(1 << bit);
-    netplayGuest.sendButtons(guestButtons);
-    return;
+    if (netplayGuestActive) netplayGuest.sendButtons(guestButtons);
+    if (lockstepHostActive) lockstepHost.setLocalButtons(guestButtons);
+    if (lockstepGuestActive) lockstepGuest.setLocalButtons(guestButtons);
+    if (lockstepHostActive || lockstepGuestActive) return;
+    if (netplayGuestActive) return;
   }
-  nesWorker.postMessage({ type: "button", controller: 1, bit: BUTTON[name], pressed });
+  nesWorker.postMessage({ type: "button", controller: 1, bit, pressed });
 }
 
 // --- キーボード入力（PC向け） ---
@@ -1428,9 +1507,20 @@ if (appEl && playModeBtn && exitPlayModeBtn) {
   });
 }
 
-// --- オンライン対戦（WebRTC、M8 Phase1: 画面ストリーミング型） ---
+// --- オンライン対戦（WebRTC） ---
 const netplayHost = new NetplayHost();
 const netplayGuest = new NetplayGuest();
+const lockstepHost = new LockstepHost();
+const lockstepGuest = new LockstepGuest();
+
+const netplayOpenBtn = document.querySelector<HTMLButtonElement>("#netplay-open-btn");
+const netplayDialog = document.querySelector<HTMLDialogElement>("#netplay-dialog");
+const netplayDialogClose = document.querySelector<HTMLButtonElement>("#netplay-dialog-close");
+const netplayBadge = document.querySelector<HTMLSpanElement>("#netplay-badge");
+const netplayRolePicker = document.querySelector<HTMLDivElement>("#netplay-role-picker");
+const netplayRoleBack = document.querySelector<HTMLButtonElement>("#netplay-role-back");
+const netplayHostPanel = document.querySelector<HTMLElement>('[data-netplay-panel="host"]');
+const netplayGuestPanel = document.querySelector<HTMLElement>('[data-netplay-panel="guest"]');
 
 const netplayHostStartBtn = document.querySelector<HTMLButtonElement>("#netplay-host-start");
 const netplayHostOfferEl = document.querySelector<HTMLTextAreaElement>("#netplay-host-offer");
@@ -1443,10 +1533,128 @@ const netplayGuestAnswerEl = document.querySelector<HTMLTextAreaElement>("#netpl
 const netplayGuestStatusEl = document.querySelector<HTMLParagraphElement>("#netplay-guest-status");
 const netplayGuestVideoEl = document.querySelector<HTMLVideoElement>("#netplay-guest-video");
 
+function setNetplayBadge(text: string, active = false): void {
+  if (!netplayBadge) return;
+  const idle = !text || text === "未接続";
+  netplayBadge.hidden = idle && !active;
+  if (!idle || active) {
+    netplayBadge.hidden = false;
+    netplayBadge.textContent = text || "接続中";
+  }
+  netplayBadge.dataset.active = active ? "true" : "false";
+}
+
+function setNetplayRole(role: "host" | "guest" | null): void {
+  if (netplayRolePicker) netplayRolePicker.hidden = role !== null;
+  if (netplayRoleBack) netplayRoleBack.hidden = role === null;
+  if (netplayHostPanel) netplayHostPanel.hidden = role !== "host";
+  if (netplayGuestPanel) netplayGuestPanel.hidden = role !== "guest";
+}
+
+function syncNetplayBadgeFromStatuses(): void {
+  const hostText = netplayHostStatusEl?.textContent?.trim() ?? "";
+  const guestText = netplayGuestStatusEl?.textContent?.trim() ?? "";
+  const connected =
+    /connected|接続済|対戦中|running|ROM 同期完了|ロックステップ運転中/i.test(hostText) ||
+    /connected|接続済|対戦中|running|ROM 同期完了|ロックステップ運転中/i.test(guestText);
+  const busy =
+    netplayGuestActive ||
+    lockstepGuestActive ||
+    lockstepHostActive ||
+    /生成中|接続中|発行|転送|待機/i.test(hostText) ||
+    /生成中|接続中|発行|転送|待機/i.test(guestText);
+  if (connected) {
+    setNetplayBadge("対戦中", true);
+  } else if (busy) {
+    const msg = hostText !== "未接続" && hostText ? hostText : guestText;
+    setNetplayBadge(msg.length > 24 ? `${msg.slice(0, 24)}…` : msg, false);
+  } else {
+    setNetplayBadge("未接続", false);
+  }
+}
+
+const setNetplayHostStatus = (text: string) => {
+  if (netplayHostStatusEl) netplayHostStatusEl.textContent = text;
+  syncNetplayBadgeFromStatuses();
+};
+const setNetplayGuestStatus = (text: string) => {
+  if (netplayGuestStatusEl) netplayGuestStatusEl.textContent = text;
+  syncNetplayBadgeFromStatuses();
+};
+
+netplayOpenBtn?.addEventListener("click", () => {
+  netplayDialog?.showModal();
+});
+netplayDialogClose?.addEventListener("click", () => {
+  netplayDialog?.close();
+});
+netplayDialog?.addEventListener("click", (e) => {
+  if (e.target === netplayDialog) netplayDialog.close();
+});
+
+document.querySelectorAll<HTMLButtonElement>("[data-netplay-role]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const role = btn.dataset.netplayRole === "guest" ? "guest" : "host";
+    setNetplayRole(role);
+  });
+});
+netplayRoleBack?.addEventListener("click", () => {
+  setNetplayRole(null);
+});
+setNetplayRole(null);
+
+function selectedNetplayMode(): "stream" | "lockstep" {
+  const checked = document.querySelector<HTMLInputElement>('input[name="netplay-mode"]:checked');
+  return checked?.value === "lockstep" ? "lockstep" : "stream";
+}
+
 function applyGuestButtons(byte: number): void {
   for (let bit = 0; bit < 8; bit++) {
     nesWorker.postMessage({ type: "button", controller: 2, bit, pressed: (byte & (1 << bit)) !== 0 });
   }
+}
+
+function loadRomForNetplay(bytes: Uint8Array): Promise<void> {
+  return new Promise((resolve, reject) => {
+    loadRomResultHandlers.netplay = (ok, message) => {
+      delete loadRomResultHandlers.netplay;
+      if (ok) resolve();
+      else reject(new Error(message ?? "ROMの読み込みに失敗しました"));
+    };
+    // コピーを渡して転送後も呼び出し側バッファを残す
+    const copy = bytes.slice();
+    nesWorker.postMessage({ type: "loadRom", bytes: copy, context: "netplay" }, [copy.buffer]);
+  });
+}
+
+function enableLockstepWorker(enabled: boolean): void {
+  nesWorker.postMessage({ type: "lockstepEnable", enabled });
+}
+
+function makeLockstepHooks(setStatus: (message: string) => void) {
+  return {
+    onStatus: (state: RTCPeerConnectionState) => {
+      setStatus(`接続状態: ${state}`);
+    },
+    onLog: (message: string) => {
+      setStatus(message);
+    },
+    onRom: async (bytes: Uint8Array, name: string) => {
+      enableLockstepWorker(true);
+      await loadRomForNetplay(bytes);
+      lastBuiltRom = bytes;
+      setStatus(`ROM「${name}」をロードしました（ロックステップ）`);
+    },
+    onStep: (frame: number, p1: number, p2: number) => {
+      nesWorker.postMessage({ type: "stepFrame", p1, p2, frame });
+    },
+    onDesync: (frame: number, localHash: number, remoteHash: number) => {
+      setStatus(`デシンク frame=${frame}（local=${localHash} remote=${remoteHash}）`);
+      enableLockstepWorker(false);
+      lockstepHostActive = false;
+      lockstepGuestActive = false;
+    },
+  };
 }
 
 if (
@@ -1462,52 +1670,117 @@ if (
   netplayGuestVideoEl
 ) {
   netplayHostStartBtn.addEventListener("click", () => {
-    netplayHostStatusEl.textContent = "招待コードを生成中...";
+    const mode = selectedNetplayMode();
+    netplayGuestActive = false;
+    lockstepGuestActive = false;
+    lockstepHost.close();
+    netplayHost.close();
+
+    if (mode === "lockstep") {
+      const rom = insertedCassette?.bytes ?? lastBuiltRom;
+      if (!rom) {
+        setNetplayHostStatus("ロックステップには先に ROM（ビルド or カセット）が必要です");
+        return;
+      }
+      lockstepHostActive = true;
+      guestButtons = 0;
+      lockstepHost.setLocalButtons(0);
+      setNetplayHostStatus("招待コードを生成中（ロックステップ）...");
+      lockstepHost
+        .start(rom, insertedCassette?.name ?? "game.nes", makeLockstepHooks(setNetplayHostStatus))
+        .then((offerCode) => {
+          netplayHostOfferEl.value = offerCode;
+          setNetplayHostStatus("招待コードを発行しました（ロックステップ）。ゲストに送ってください。");
+        })
+        .catch((err: unknown) => {
+          lockstepHostActive = false;
+          enableLockstepWorker(false);
+          setNetplayHostStatus(err instanceof Error ? err.message : String(err));
+        });
+      return;
+    }
+
+    lockstepHostActive = false;
+    enableLockstepWorker(false);
+    setNetplayHostStatus("招待コードを生成中...");
     netplayHost
       .start(
         canvas,
         (buttons) => applyGuestButtons(buttons),
         (state) => {
-          netplayHostStatusEl.textContent = `接続状態: ${state}`;
+          setNetplayHostStatus(`接続状態: ${state}`);
         },
       )
       .then((offerCode) => {
         netplayHostOfferEl.value = offerCode;
-        netplayHostStatusEl.textContent = "招待コードを発行しました。ゲストに送ってください。";
+        setNetplayHostStatus("招待コードを発行しました。ゲストに送ってください。");
       })
       .catch((err: unknown) => {
-        netplayHostStatusEl.textContent = err instanceof Error ? err.message : String(err);
+        setNetplayHostStatus(err instanceof Error ? err.message : String(err));
       });
   });
 
   netplayHostConnectBtn.addEventListener("click", () => {
-    netplayHost
-      .completeConnection(netplayHostAnswerEl.value)
+    const mode = selectedNetplayMode();
+    const complete =
+      mode === "lockstep"
+        ? lockstepHost.completeConnection(netplayHostAnswerEl.value)
+        : netplayHost.completeConnection(netplayHostAnswerEl.value);
+    complete
       .then(() => {
-        netplayHostStatusEl.textContent = "応答コードを適用しました。接続中...";
+        setNetplayHostStatus("応答コードを適用しました。接続中...");
       })
       .catch((err: unknown) => {
-        netplayHostStatusEl.textContent = err instanceof Error ? err.message : String(err);
+        setNetplayHostStatus(err instanceof Error ? err.message : String(err));
       });
   });
 
   netplayGuestJoinBtn.addEventListener("click", () => {
-    netplayGuestStatusEl.textContent = "応答コードを生成中...";
+    const mode = selectedNetplayMode();
+    netplayGuestActive = false;
+    lockstepHostActive = false;
+    lockstepGuest.close();
+    netplayGuest.close();
+
+    if (mode === "lockstep") {
+      lockstepGuestActive = true;
+      guestButtons = 0;
+      lockstepGuest.setLocalButtons(0);
+      setNetplayGuestStatus("応答コードを生成中（ロックステップ）...");
+      lockstepGuest
+        .join(netplayGuestOfferEl.value, makeLockstepHooks(setNetplayGuestStatus))
+        .then((answerCode) => {
+          netplayGuestAnswerEl.value = answerCode;
+          setNetplayGuestStatus(
+            "応答コードを発行しました。ホストに送り、ROM 受信を待ってください。",
+          );
+        })
+        .catch((err: unknown) => {
+          lockstepGuestActive = false;
+          enableLockstepWorker(false);
+          setNetplayGuestStatus(err instanceof Error ? err.message : String(err));
+        });
+      return;
+    }
+
+    lockstepGuestActive = false;
+    enableLockstepWorker(false);
+    setNetplayGuestStatus("応答コードを生成中...");
     netplayGuest
       .join(
         netplayGuestOfferEl.value,
         netplayGuestVideoEl,
         (state) => {
-          netplayGuestStatusEl.textContent = `接続状態: ${state}`;
+          setNetplayGuestStatus(`接続状態: ${state}`);
         },
       )
       .then((answerCode) => {
         netplayGuestAnswerEl.value = answerCode;
-        netplayGuestStatusEl.textContent = "応答コードを発行しました。ホストに送ってください。";
+        setNetplayGuestStatus("応答コードを発行しました。ホストに送ってください。");
         netplayGuestActive = true;
       })
       .catch((err: unknown) => {
-        netplayGuestStatusEl.textContent = err instanceof Error ? err.message : String(err);
+        setNetplayGuestStatus(err instanceof Error ? err.message : String(err));
       });
   });
 }

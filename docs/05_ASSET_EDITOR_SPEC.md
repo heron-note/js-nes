@@ -110,6 +110,7 @@ function update() {
 
 ## 関連ドキュメント
 
+- **Create プロジェクトモデル v3（正本）**: [09_CREATE_PROJECT_MODEL.md](09_CREATE_PROJECT_MODEL.md)
 - アーキテクチャ全体: [01_ARCHITECTURE.md](01_ARCHITECTURE.md)
 - DSL仕様（ビルトインAPI）: [03_DSL_SPEC.md](03_DSL_SPEC.md)
 - エミュレータのPPU/APU実装: [04_EMULATOR_SPEC.md](04_EMULATOR_SPEC.md)

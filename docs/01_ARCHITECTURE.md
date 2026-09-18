@@ -74,6 +74,9 @@
   パーツは専用のドット絵タイルシートも持つ。ビルド時に全パーツ+シーンを1本のDSLソースへ結合し
   （`apps/web/src/projectBuild.ts`）、パーツごとのタイルを1本のCHR-ROMへ連結する
   （dsl-compilerの資産リンク機能、[03_DSL_SPEC.md](03_DSL_SPEC.md)参照）。
+- **M12（進行中）**: 上記は公開前の中間形。正本はマッパーを根にしたツリー型 v3
+  （[09_CREATE_PROJECT_MODEL.md](09_CREATE_PROJECT_MODEL.md)、`apps/web/src/projectV3.ts`）。
+  エクスプローラで資産を辿り、ID 参照で紐づけ、編集はブロック主・コード従とする。
 - エミュレーション本体（`Nes.runFrame()`のステップ実行）は専用Web Worker（`apps/web/src/nesWorker.ts`）
   で自走させ、メインスレッドの`requestAnimationFrame`ループ（描画・DOM操作等で詰まりうる）から
   音声生成・配信を切り離している。メインスレッドはWorkerから届いた最新のフレームバッファを

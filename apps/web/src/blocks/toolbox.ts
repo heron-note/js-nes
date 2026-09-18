@@ -126,6 +126,7 @@ export const PART_TOOLBOX = {
       colour: "20",
       contents: [
         { kind: "block", type: "fjs_btn" },
+        { kind: "block", type: "fjs_compare_expr" },
         { kind: "block", type: "fjs_var_truthy" },
       ],
     },
