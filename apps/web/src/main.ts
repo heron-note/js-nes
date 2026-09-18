@@ -756,7 +756,7 @@ const recordBtn = document.querySelector<HTMLButtonElement>("#record-btn");
 let insertedCassette: {
   name: string;
   bytes: Uint8Array;
-  /** 提供サンプル（都度DL）。GitHub 倉庫には保存しない */
+  /** 収録ソフト（都度DL）。GitHub 倉庫には保存しない */
   fromSample?: boolean;
 } | null = null;
 
@@ -905,7 +905,7 @@ function populateSampleRomSelect(entries: SampleRomEntry[]): void {
   sampleRomSelect.innerHTML = "";
   const placeholder = document.createElement("option");
   placeholder.value = "";
-  placeholder.textContent = "サンプルを選ぶ…";
+  placeholder.textContent = "収録ソフトを選ぶ…";
   sampleRomSelect.appendChild(placeholder);
 
   for (const kind of KIND_ORDER) {
@@ -933,7 +933,7 @@ void loadSampleCatalog()
       sampleRomSelect.innerHTML = "";
       const opt = document.createElement("option");
       opt.value = "";
-      opt.textContent = "サンプル一覧を取得できません";
+      opt.textContent = "収録ソフト一覧を取得できません";
       sampleRomSelect.appendChild(opt);
       sampleRomSelect.disabled = true;
     }
@@ -953,7 +953,7 @@ sampleRomPlayBtn?.addEventListener("click", () => {
   const id = sampleRomSelect?.value;
   const entry = sampleRomEntries.find((e) => e.id === id);
   if (!entry) {
-    setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, "サンプルを選んでください");
+    setCassetteUi(insertedCassette ? { name: insertedCassette.name } : null, "収録ソフトを選んでください");
     return;
   }
   sampleRomPlayBtn.disabled = true;
@@ -961,7 +961,7 @@ sampleRomPlayBtn?.addEventListener("click", () => {
   void fetchSampleRomBytes(entry)
     .then((bytes) => {
       // メモリ上だけで刺す。永続化・倉庫保存はしない（fromSample）
-      insertCassette(entry.title, bytes, `サンプル「${entry.title}」を刺しました（都度取得・非保存）`, {
+      insertCassette(entry.title, bytes, `「${entry.title}」を刺しました`, {
         fromSample: true,
       });
     })
@@ -1181,7 +1181,7 @@ if (!isGithubCloudConfigured()) {
     if (!githubToken || !githubRepo) return;
     if (insertedCassette?.fromSample) {
       setGithubAuthStatus(
-        "提供サンプルは倉庫に保存しません（都度ダウンロードの一時ロードです）。自分の .nes を刺してから保存してください。",
+        "収録ソフトは倉庫に保存できません。自分の .nes を刺してから保存してください。",
       );
       return;
     }

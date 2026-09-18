@@ -85,7 +85,7 @@ export function renderCartridgeLabel(canvas: HTMLCanvasElement, options: Cartrid
   // フッター
   ctx.fillStyle = "#161616";
   ctx.font = "12px monospace";
-  ctx.fillText("FamiJS Studio — Mapper 0 (NROM)", LABEL_WIDTH / 2, LABEL_HEIGHT - 16);
+  ctx.fillText("へろコン — Mapper 0 (NROM)", LABEL_WIDTH / 2, LABEL_HEIGHT - 16);
 }
 
 function wrapText(

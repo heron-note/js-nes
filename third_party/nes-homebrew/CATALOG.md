@@ -5,8 +5,8 @@
 > **免責**: 各作者・配布物のライセンス表記を優先する。公開前に `licenses/` と公式ページを再確認すること。
 > 本カタログは法律助言ではない。
 
-アプリ UI では各 ROM に `kind`（game / demo / tool / template / test）と日本語の `summary` / `howto` を付与する（`apps/web/scripts/sync-sample-roms.mjs`）。
-「サンプル」の大半は完成ゲームではなく、デモ・開発ツール・テンプレ・検証 ROM も含む。
+アプリ UI では「収録ソフト」として各 ROM に `kind`（game / demo / tool / template / test）と日本語の `summary` / `howto` を付与する（`apps/web/scripts/sync-sample-roms.mjs`）。
+自作デモではなく、再配布可能なホームブリュー等をすぐ遊べるよう同梱している。ゲーム以外（デモ・ツール・テンプレ・検証）も含む。
 
 ## A. 商用同梱向き（寛容ライセンス）
 

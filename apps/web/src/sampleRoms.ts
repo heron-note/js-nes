@@ -43,20 +43,20 @@ let catalogCache: SampleRomCatalog | null = null;
 export async function loadSampleCatalog(force = false): Promise<SampleRomCatalog> {
   if (catalogCache && !force) return catalogCache;
   const res = await fetch(catalogUrl(), { cache: "no-store" });
-  if (!res.ok) throw new Error(`サンプル一覧の取得に失敗しました (${res.status})`);
+  if (!res.ok) throw new Error(`収録ソフト一覧の取得に失敗しました (${res.status})`);
   const json = (await res.json()) as SampleRomCatalog;
-  if (!json || !Array.isArray(json.roms)) throw new Error("サンプル一覧の形式が不正です");
+  if (!json || !Array.isArray(json.roms)) throw new Error("収録ソフト一覧の形式が不正です");
   catalogCache = json;
   return json;
 }
 
 /**
- * 選択したサンプルを都度ダウンロードして返す。呼び出し側はロード後に参照を捨ててよい
+ * 選択した収録ソフトを都度ダウンロードして返す。呼び出し側はロード後に参照を捨ててよい
  * （永続化・GitHub 倉庫への保存はしない）。
  */
 export async function fetchSampleRomBytes(entry: SampleRomEntry): Promise<Uint8Array> {
   const res = await fetch(romUrl(entry.file), { cache: "no-store" });
-  if (!res.ok) throw new Error(`「${entry.title}」の取得に失敗しました (${res.status})`);
+  if (!res.ok) throw new Error(`収録ソフト「${entry.title}」の取得に失敗しました (${res.status})`);
   const buf = await res.arrayBuffer();
   return new Uint8Array(buf);
 }

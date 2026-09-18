@@ -1,4 +1,4 @@
-# FamiJS Studio（仮称）
+# へろコン
 
 **公開URL: https://heron-note.github.io/js-nes/**
 
