@@ -2,7 +2,7 @@ node_modules/
 dist/
 build/
 .vite/
-roms/
+/roms/
 third_party/nes-homebrew/_tmp/
 apps/web/public/sample-roms/
 *.local
