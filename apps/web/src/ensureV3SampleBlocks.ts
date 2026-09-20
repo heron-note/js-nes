@@ -11,8 +11,10 @@ import {
 } from "./blocks/blockEditor.js";
 import { PART_TOOLBOX, SCENE_TOOLBOX } from "./blocks/toolbox.js";
 import type { ProjectV3 } from "./projectV3.js";
+import { ensureSamplePlacements } from "./ensureSamplePlacements.js";
+import { ensureSampleGraphics } from "./ensureSampleGraphics.js";
 
-/** ブロックを埋めたら true。 */
+/** ブロック／配置／見えるドットを埋めたら true。 */
 export function ensureV3SampleBlocks(project: ProjectV3): boolean {
   let changed = false;
 
@@ -43,5 +45,7 @@ export function ensureV3SampleBlocks(project: ProjectV3): boolean {
     }
   }
 
+  if (ensureSamplePlacements(project)) changed = true;
+  if (ensureSampleGraphics(project)) changed = true;
   return changed;
 }

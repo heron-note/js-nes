@@ -52,12 +52,20 @@ export type CreateExplorerHandle = {
   /** 編集中 Blockly を資産へ書き戻す（ビルド前に呼ぶ） */
   flush: () => void;
   resizeBlocks: () => void;
+  /** ツリー選択を変更（例: サンプルの Player を開く） */
+  selectCharacter: (id: string) => void;
+  selectScene: (id: string) => void;
+};
+
+export type CreateExplorerOptions = {
+  onBuild?: () => void;
 };
 
 export function mountCreateExplorer(
   root: HTMLElement,
   initial: ProjectV3,
   onChange: (project: ProjectV3) => void,
+  options: CreateExplorerOptions = {},
 ): CreateExplorerHandle {
   let project = initial;
   let selection: ExplorerSelection = { kind: "project" };
@@ -341,6 +349,10 @@ export function mountCreateExplorer(
           キャラ ${used.characterIds.size}。CHR 候補（使用分のみ）: ${buildBmps.length} 枚。
           取り込んだだけの未使用フォントはバイナリに入りません。
         </p>
+        <div class="create-wizard-actions">
+          <button type="button" id="v3-build-btn">ビルド&amp;実行</button>
+          <span class="muted">NROM(0) のみ。結果は左プレビューへ。</span>
+        </div>
       `;
       editor.querySelector<HTMLInputElement>("#v3-title")!.addEventListener("change", (e) => {
         project = { ...project, title: (e.target as HTMLInputElement).value };
@@ -367,6 +379,11 @@ export function mountCreateExplorer(
             importStatus.textContent = err instanceof Error ? err.message : String(err);
           }
         });
+      });
+      editor.querySelector("#v3-build-btn")?.addEventListener("click", () => {
+        flushBlocks();
+        persist();
+        options.onBuild?.();
       });
       return;
     }
@@ -669,7 +686,7 @@ export function mountCreateExplorer(
             if (field === "characterId") pl.characterId = el.value;
             if (field === "x") pl.x = Math.max(0, Math.min(255, Number(el.value) | 0));
             if (field === "y") pl.y = Math.max(0, Math.min(255, Number(el.value) | 0));
-            commit();
+            softCommit();
           });
         });
         row.querySelector<HTMLButtonElement>("[data-remove]")?.addEventListener("click", () => {
@@ -837,6 +854,18 @@ export function mountCreateExplorer(
     },
     resizeBlocks: () => {
       if (blockWorkspace) Blockly.svgResize(blockWorkspace);
+    },
+    selectCharacter: (id: string) => {
+      if (!project.characters[id]) return;
+      selection = { kind: "character", id };
+      renderTree();
+      renderEditor();
+    },
+    selectScene: (id: string) => {
+      if (!project.scenes[id]) return;
+      selection = { kind: "scene", id };
+      renderTree();
+      renderEditor();
     },
   };
 }

@@ -17,6 +17,7 @@ export type UsedAssetIds = {
  * - シーン配置 → キャラ → bitmap / palette
  * - シーン背景 → bitmap → palette
  * - シーン soundIds
+ * - カタログ上の全キャラ（logicBlocks の instance 参照を落とさないため）
  * （将来: テキストラン → providedSource の字ビットマップ）
  */
 export function collectUsedAssetIds(project: ProjectV3): UsedAssetIds {
@@ -30,16 +31,22 @@ export function collectUsedAssetIds(project: ProjectV3): UsedAssetIds {
     if (scene.backgroundBitmapId) bitmapIds.add(scene.backgroundBitmapId);
     for (const pl of scene.placements) {
       characterIds.add(pl.characterId);
-      const ch = project.characters[pl.characterId];
-      if (!ch) continue;
-      bitmapIds.add(ch.bitmapId);
-      paletteIds.add(ch.paletteId);
     }
   }
 
-  // 配置されていないが「編集中の正」として残す場合もあるので、
-  // キャラ一覧そのものはビルド対象にしない（配置されたものだけ）。
-  // 背景ビットマップのパレットも拾う。
+  // シーン logic の instance は placements に無いことがあるため、キャラカタログも対象に含める。
+  // （提供フォントなど「ビットマップだけ」はキャラ未リンクなら除外される）
+  for (const id of project.characterOrder) {
+    characterIds.add(id);
+  }
+
+  for (const id of characterIds) {
+    const ch = project.characters[id];
+    if (!ch) continue;
+    bitmapIds.add(ch.bitmapId);
+    if (ch.paletteId) paletteIds.add(ch.paletteId);
+  }
+
   for (const id of [...bitmapIds]) {
     const bmp = project.bitmaps[id];
     if (bmp) paletteIds.add(bmp.paletteId);

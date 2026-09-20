@@ -193,6 +193,28 @@ function fromBase64(b64: string): Uint8Array {
 }
 
 // --- デフォルトプロジェクト（初回起動時のサンプル） ---
+/** 8×8 タイルに簡単なシルエットを描く（全部 0 だと画面上で見えない）。 */
+function makeSimpleTile(pattern: "player" | "mover"): number[] {
+  const t = new Array(64).fill(0);
+  const put = (x: number, y: number, c: number) => {
+    if (x >= 0 && x < 8 && y >= 0 && y < 8) t[y * 8 + x] = c;
+  };
+  if (pattern === "player") {
+    // 頭＋胴
+    for (let x = 2; x <= 5; x++) put(x, 1, 3);
+    for (let y = 2; y <= 5; y++) for (let x = 2; x <= 5; x++) put(x, y, 2);
+    put(3, 6, 1);
+    put(4, 6, 1);
+  } else {
+    // 横長の敵っぽい形
+    for (let x = 1; x <= 6; x++) put(x, 3, 3);
+    for (let x = 2; x <= 5; x++) put(x, 4, 2);
+    put(1, 3, 1);
+    put(6, 3, 1);
+  }
+  return t;
+}
+
 // タイル0番＝自機（キー操作）、タイル1番＝もう1体（自動で左右に往復）の2パーツ構成。
 // 「パーツにドット絵+振る舞いをセットで持たせ、シーンに配置する」という
 // プロジェクト式そのものをサンプルとして示す。
@@ -201,7 +223,7 @@ function createDefaultProject(): Project {
   project.title = "サンプル";
   project.parts.push({
     name: "Player",
-    tiles: [new Array(64).fill(0)],
+    tiles: [makeSimpleTile("player")],
     code: [
       "field x = 120;",
       "field y = 100;",
@@ -218,7 +240,7 @@ function createDefaultProject(): Project {
   });
   project.parts.push({
     name: "Mover",
-    tiles: [new Array(64).fill(0)],
+    tiles: [makeSimpleTile("mover")],
     code: [
       "field x = 200;",
       "field y = 50;",
@@ -700,10 +722,18 @@ if (ensureV3SampleBlocks(projectV3)) {
 }
 const createExplorerRoot = document.querySelector<HTMLElement>("#create-explorer-root");
 if (createExplorerRoot) {
-  createExplorerHandle = mountCreateExplorer(createExplorerRoot, projectV3, (next) => {
-    projectV3 = next;
-    saveProjectV3ToLocalStorage(next);
-  });
+  createExplorerHandle = mountCreateExplorer(
+    createExplorerRoot,
+    projectV3,
+    (next) => {
+      projectV3 = next;
+      saveProjectV3ToLocalStorage(next);
+    },
+    { onBuild: () => buildAndRun() },
+  );
+  // サンプルがあれば最初に Player のブロックを見せる
+  const playerId = projectV3.characterOrder.find((id) => projectV3.characters[id]?.name === "Player");
+  if (playerId) createExplorerHandle.selectCharacter(playerId);
 }
 
 refreshPartSelect();
