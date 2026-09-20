@@ -641,6 +641,10 @@ function buildAndRun(): void {
     if (createExplorerHandle) {
       saveProjectV3ToLocalStorage(createExplorerHandle.getProject());
     }
+    // Create からビルドしたら Play に戻してすぐ触れるようにする
+    if (document.querySelector('.mode-tabs button[data-mode="create"][aria-selected="true"]')) {
+      setMode("play");
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     buildError!.hidden = false;

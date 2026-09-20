@@ -349,7 +349,8 @@ export function mountCreateExplorer(
         <h3>ビルド時の取り込み見込み</h3>
         <p class="muted">
           シーンから参照中: ビットマップ ${used.bitmapIds.size} / パレット ${used.paletteIds.size} /
-          キャラ ${used.characterIds.size}。CHR 候補（使用分のみ）: ${buildBmps.length} 枚。
+          キャラ ${used.characterIds.size}。CHR 候補: ${buildBmps.length} 枚 /
+          タイル約 ${estimateTiles(project)} / 256（NROM）。
           取り込んだだけの未使用フォントはバイナリに入りません。
         </p>
         <div class="create-wizard-actions">
@@ -972,6 +973,16 @@ function characterOptions(project: ProjectV3, selected: string): string {
       return `<option value="${escapeAttr(id)}"${id === selected ? " selected" : ""}>${escapeHtml(c.name)}</option>`;
     })
     .join("");
+}
+
+function estimateTiles(project: ProjectV3): number {
+  let n = 0;
+  for (const id of project.characterOrder) {
+    const ch = project.characters[id];
+    const bmp = ch ? project.bitmaps[ch.bitmapId] : undefined;
+    if (bmp) n += bmp.tileWidth * bmp.tileHeight;
+  }
+  return n;
 }
 
 function drawCharacterPreview(

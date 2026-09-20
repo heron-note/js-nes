@@ -2,6 +2,29 @@ import { describe, expect, it } from "vitest";
 import { parse, ParseError } from "./parser.js";
 
 describe("parse（DSL v1: part/scene構文, Phase 1 パースのみ）", () => {
+  it("drawSprite 引数の self.x + N をパースできる", () => {
+    const program = parse(`
+      part Ball {
+        field x = 0;
+        field y = 0;
+        behavior move(self) {
+          drawSprite(0, self.x + 8, self.y + 8, 1, 0);
+        }
+      }
+      scene Main {
+        instance b: Ball;
+        function update() { Ball.move(b); }
+      }
+    `);
+    const call = program.parts[0]!.behaviors[0]!.body[0] as {
+      kind: string;
+      args: Array<{ kind: string; add?: number; property?: string }>;
+    };
+    expect(call.kind).toBe("call");
+    expect(call.args[1]).toMatchObject({ kind: "member_add", property: "x", add: 8 });
+    expect(call.args[2]).toMatchObject({ kind: "member_add", property: "y", add: 8 });
+  });
+
   it("part/sceneを使わないv0ソースは parts/scenes が空配列になる", () => {
     const program = parse(`
       let x = 0;
