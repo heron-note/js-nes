@@ -364,6 +364,7 @@ export function mountCreateExplorer(
             JSON を読み込む
             <input type="file" id="v3-import-input" accept="application/json,.json,.famijs.json" hidden />
           </label>
+          <button type="button" id="v3-reset-sample-btn" class="secondary">サンプルに戻す</button>
         </div>
         <p class="muted" id="v3-io-status"></p>
       `;
@@ -409,6 +410,10 @@ export function mountCreateExplorer(
         a.click();
         URL.revokeObjectURL(url);
         ioStatus.textContent = "書き出しました";
+      });
+      editor.querySelector("#v3-reset-sample-btn")!.addEventListener("click", () => {
+        if (!window.confirm("サンプル（Player / Mover）に戻しますか？今の内容は失われます。")) return;
+        options.onResetSample?.();
       });
       editor.querySelector<HTMLInputElement>("#v3-import-input")!.addEventListener("change", async (e) => {
         const file = (e.target as HTMLInputElement).files?.[0];

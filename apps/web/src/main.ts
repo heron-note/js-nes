@@ -733,7 +733,24 @@ if (createExplorerRoot) {
       projectV3 = next;
       saveProjectV3ToLocalStorage(next);
     },
-    { onBuild: () => buildAndRun() },
+    {
+      onBuild: () => buildAndRun(),
+      onResetSample: () => {
+        project = createDefaultProject();
+        seedDefaultProjectBlocks(project);
+        saveProjectToLocalStorage(project);
+        projectV3 = migrateProjectV2toV3(project);
+        ensureV3SampleBlocks(projectV3);
+        saveProjectV3ToLocalStorage(projectV3);
+        createExplorerHandle?.setProject(projectV3);
+        const playerId = projectV3.characterOrder.find((id) => projectV3.characters[id]?.name === "Player");
+        if (playerId) createExplorerHandle?.selectCharacter(playerId);
+        if (project.title) cartTitleInput.value = project.title;
+        if (project.author) cartAuthorInput.value = project.author;
+        refreshPartSelect();
+        refreshSceneSelect();
+      },
+    },
   );
   // サンプルがあれば最初に Player のブロックを見せる
   const playerId = projectV3.characterOrder.find((id) => projectV3.characters[id]?.name === "Player");

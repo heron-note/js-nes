@@ -16,7 +16,7 @@ describe("parse（DSL v1: part/scene構文, Phase 1 パースのみ）", () => {
         function update() { Ball.move(b); }
       }
     `);
-    const stmt = program.parts[0]!.behaviors[0]!.body[0] as {
+    const stmt = program.parts[0]!.behaviors[0]!.body[0] as unknown as {
       kind: string;
       call: { kind: string; args: Array<{ kind: string; add?: number; property?: string }> };
     };
