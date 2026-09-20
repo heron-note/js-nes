@@ -303,6 +303,19 @@ export function defineFamiJsBlocks(): void {
       },
     },
 
+    fjs_self_field_offset: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("self.")
+          .appendField(new Blockly.FieldTextInput("x"), "FIELD")
+          .appendField("+")
+          .appendField(new Blockly.FieldNumber(0, 0, 255, 1), "OFFSET");
+        this.setOutput(true, null);
+        this.setColour(COLOR_PARTS);
+        this.setTooltip("self.field + 数値（複数タイルの位置ずらし）");
+      },
+    },
+
     fjs_self_field_set: {
       init(this: Blockly.Block) {
         this.appendValueInput("VALUE").appendField("self.").appendField(new Blockly.FieldTextInput("x"), "FIELD").appendField("＝");

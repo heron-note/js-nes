@@ -188,6 +188,12 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
       e.LDA_ZP(resolveGlobal(v.name, line));
       return;
     }
+    if (v.kind === "member_add") {
+      loadPartValueIntoA({ kind: "member", object: v.object, property: v.property }, ctx, line);
+      e.CLC();
+      e.ADC_IMM(v.add & 0xff);
+      return;
+    }
     if (v.object === "self") {
       if (!ctx.selfPartType) {
         throw new CodegenError(`${line}行目: 'self' はbehavior内でのみ使用できます`);
@@ -300,7 +306,9 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
       e.CMP_IMM(cond.right.value);
     } else if (cond.right.kind === "ident") {
       e.CMP_ZP(resolveGlobal(cond.right.name, 0));
-    } else {
+    } else if (cond.right.kind === "member_add") {
+      throw new CodegenError(`比較の右辺に 'obj.field + N' は使えません（drawSprite 等の引数専用）`);
+    } else if (cond.right.kind === "member") {
       cmpPartValue(cond.right, ctx, 0);
     }
     genCompareSkip(cond.op, skipLabel);

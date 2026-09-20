@@ -34,6 +34,11 @@ describe("projectV3ToV2", () => {
     expect(v2.scenes[0]?.name).toBe("Main");
   });
 
+  it("rejects non-NROM build", () => {
+    const v3 = migrateProjectV2toV3(sampleV2, 1);
+    expect(() => projectV3ToV2(v3)).toThrow(ProjectV3BuildError);
+  });
+
   it("rejects CHR over 256 tiles", () => {
     const v3 = migrateProjectV2toV3(sampleV2, 0);
     const chId = v3.characterOrder[0]!;

@@ -251,6 +251,77 @@ export function loadDefaultWorkspace(workspace: Blockly.WorkspaceSvg): void {
   loadDefaultPlayerPartBlocks(workspace);
 }
 
+/**
+ * ビットマップのタイル格子ぶん drawSprite をワークスペース末尾へ追加する。
+ * 最大 4×4。X/Y は self.x+tx*8 / self.y+ty*8。
+ */
+export function appendMultiTileDrawSprites(
+  workspace: Blockly.WorkspaceSvg,
+  tileWidth: number,
+  tileHeight: number,
+  options: { spriteIdStart?: number; palette?: number } = {},
+): number {
+  const w = Math.max(1, Math.min(4, tileWidth | 0));
+  const h = Math.max(1, Math.min(4, tileHeight | 0));
+  const count = Math.min(16, w * h);
+  const spriteIdStart = options.spriteIdStart ?? 0;
+  const palette = options.palette ?? 0;
+
+  const draws: Blockly.Block[] = [];
+  for (let ty = 0; ty < h; ty++) {
+    for (let tx = 0; tx < w; tx++) {
+      const tile = ty * w + tx;
+      if (tile >= count) break;
+      const draw = newBlock(workspace, "fjs_call_drawsprite");
+      draw.setFieldValue(spriteIdStart + tile, "ID");
+      draw.setFieldValue(tile, "TILE");
+      draw.setFieldValue(palette, "PALETTE");
+      const xOff = tx * 8;
+      const yOff = ty * 8;
+      if (xOff === 0) {
+        const xGet = newBlock(workspace, "fjs_self_field_get");
+        xGet.setFieldValue("x", "FIELD");
+        plugValue(draw, "X", xGet);
+      } else {
+        const xGet = newBlock(workspace, "fjs_self_field_offset");
+        xGet.setFieldValue("x", "FIELD");
+        xGet.setFieldValue(xOff, "OFFSET");
+        plugValue(draw, "X", xGet);
+      }
+      if (yOff === 0) {
+        const yGet = newBlock(workspace, "fjs_self_field_get");
+        yGet.setFieldValue("y", "FIELD");
+        plugValue(draw, "Y", yGet);
+      } else {
+        const yGet = newBlock(workspace, "fjs_self_field_offset");
+        yGet.setFieldValue("y", "FIELD");
+        yGet.setFieldValue(yOff, "OFFSET");
+        plugValue(draw, "Y", yGet);
+      }
+      draws.push(draw);
+    }
+  }
+
+  const tops = workspace.getTopBlocks(true);
+  let anchor: Blockly.Block | null = null;
+  for (const top of tops) {
+    let cur: Blockly.Block | null = top;
+    while (cur?.getNextBlock()) cur = cur.getNextBlock();
+    if (cur?.nextConnection) {
+      anchor = cur;
+      break;
+    }
+  }
+  if (draws.length === 0) return 0;
+  stack(...draws);
+  if (anchor) {
+    anchor.nextConnection!.connect(draws[0]!.previousConnection!);
+  } else {
+    draws[0]!.moveBy(20, 200);
+  }
+  return draws.length;
+}
+
 export function isEmptyBlockState(blocks: unknown): boolean {
   if (!blocks || typeof blocks !== "object") return true;
   const state = blocks as { blocks?: unknown[] };

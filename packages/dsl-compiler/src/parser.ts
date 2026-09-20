@@ -385,6 +385,16 @@ export function parse(source: string): Program {
       if (check(".")) {
         advance();
         const propTok = expect("ident");
+        if (check("+")) {
+          advance();
+          const numTok = expect("num");
+          return {
+            kind: "member_add",
+            object: t.value,
+            property: propTok.value,
+            add: numTok.num!,
+          };
+        }
         return { kind: "member", object: t.value, property: propTok.value };
       }
       return { kind: "ident", name: t.value };

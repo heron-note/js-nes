@@ -33,6 +33,7 @@ import {
   loadDefaultMainSceneBlocks,
   loadDefaultMoverPartBlocks,
   loadDefaultPlayerPartBlocks,
+  appendMultiTileDrawSprites,
 } from "./blocks/blockEditor.js";
 import { partToolboxForMapper, sceneToolboxForMapper } from "./blocks/toolbox.js";
 import { listMapperCapabilities, MAPPER_CAPABILITIES } from "./mapperCapabilities.js";
@@ -582,7 +583,8 @@ export function mountCreateExplorer(
         </label>
         <canvas id="v3-ch-preview" class="chr-preview-canvas" width="128" height="128"></canvas>
         <h3>振る舞い（ブロック）</h3>
-        <p class="muted">左のツールボックスからブロックを置きます。コードはビルド時に自動生成されます。ビットマップが複数タイルのときは、drawSprite の tile 番号を 0,1,2… と並べてください。</p>
+        <p class="muted">左のツールボックスからブロックを置きます。複数タイルのビットマップは下のボタンで drawSprite を一括追加できます。</p>
+        <button type="button" id="v3-ch-draw-tiles" class="secondary">ビットマップ全体を描画するブロックを追加</button>
         <div id="v3-ch-blocks" class="block-workspace create-v3-blocks"></div>
         <button type="button" id="v3-delete" class="danger">削除</button>
       `;
@@ -611,6 +613,18 @@ export function mountCreateExplorer(
       });
       editor.querySelector("#v3-delete")!.addEventListener("click", () => deleteCharacter(ch.id));
       mountPartBlocks(editor.querySelector<HTMLElement>("#v3-ch-blocks")!, ch.id);
+      editor.querySelector("#v3-ch-draw-tiles")!.addEventListener("click", () => {
+        if (!blockWorkspace || blockTarget?.id !== ch.id) return;
+        const bmp = project.bitmaps[ch.bitmapId];
+        if (!bmp) {
+          window.alert("ビットマップがありません");
+          return;
+        }
+        const n = appendMultiTileDrawSprites(blockWorkspace, bmp.tileWidth, bmp.tileHeight);
+        flushBlocks();
+        softCommit();
+        window.alert(`${n} 個の drawSprite を追加しました（既存の描画ブロックは残っています。不要なら削除してください）`);
+      });
       return;
     }
 

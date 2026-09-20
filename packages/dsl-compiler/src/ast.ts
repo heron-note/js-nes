@@ -99,8 +99,16 @@ export interface Program {
 export type FieldDecl = GlobalDecl;
 
 /** 数値リテラル・変数参照に加え、self.field / instanceName.field のメンバー参照も許す。 */
-export type PartValueExpr = NumLit | Ident | MemberExpr;
-export type PartArgExpr = NumLit | Ident | MemberExpr;
+export type PartValueExpr = NumLit | Ident | MemberExpr | MemberAddExpr;
+export type PartArgExpr = NumLit | Ident | MemberExpr | MemberAddExpr;
+
+/** self.x + 8 のような「メンバー + 即値」のみ（複数タイル描画用）。 */
+export interface MemberAddExpr {
+  kind: "member_add";
+  object: string;
+  property: string;
+  add: number;
+}
 
 export interface PartCallExpr {
   kind: "call";

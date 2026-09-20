@@ -109,6 +109,7 @@ export const PART_TOOLBOX = {
         { kind: "block", type: "fjs_field_decl" },
         { kind: "block", type: "fjs_behavior_decl" },
         { kind: "block", type: "fjs_self_field_get" },
+        { kind: "block", type: "fjs_self_field_offset" },
         { kind: "block", type: "fjs_self_field_set" },
         { kind: "block", type: "fjs_self_field_add" },
         { kind: "block", type: "fjs_self_field_sub" },

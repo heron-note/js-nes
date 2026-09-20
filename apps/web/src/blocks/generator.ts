@@ -167,6 +167,13 @@ forBlock["fjs_self_field_get"] = (block): [string, number] => {
   return [`self.${field}`, ORDER_ATOMIC];
 };
 
+forBlock["fjs_self_field_offset"] = (block): [string, number] => {
+  const field = block.getFieldValue("FIELD") as string;
+  const offset = block.getFieldValue("OFFSET") as number;
+  if (!offset) return [`self.${field}`, ORDER_ATOMIC];
+  return [`self.${field} + ${offset}`, ORDER_ATOMIC];
+};
+
 forBlock["fjs_self_field_set"] = (block) => {
   const field = block.getFieldValue("FIELD") as string;
   const value = valueOf(block, "VALUE", "0");
