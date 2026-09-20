@@ -62,6 +62,7 @@ export type CreateExplorerHandle = {
 
 export type CreateExplorerOptions = {
   onBuild?: () => void;
+  onResetSample?: () => void;
 };
 
 export function mountCreateExplorer(
