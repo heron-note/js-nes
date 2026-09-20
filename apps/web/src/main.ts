@@ -40,6 +40,7 @@ import {
 } from "./projectV3.js";
 import { mountCreateExplorer, type CreateExplorerHandle } from "./createExplorer.js";
 import { ensureV3SampleBlocks } from "./ensureV3SampleBlocks.js";
+import { buildTemplateProjectV3 } from "./createTemplates.js";
 import { projectV3ToV2, ProjectV3BuildError } from "./projectBuildV3.js";
 import { resolveRomFromFile } from "./romFromFile.js";
 import { fetchSampleRomBytes, loadSampleCatalog, type SampleRomEntry } from "./sampleRoms.js";
@@ -738,17 +739,22 @@ if (createExplorerRoot) {
       onBuild: () => buildAndRun(),
       audio,
       onResetSample: () => {
-        project = createDefaultProject();
-        seedDefaultProjectBlocks(project);
-        saveProjectToLocalStorage(project);
-        projectV3 = migrateProjectV2toV3(project);
-        ensureV3SampleBlocks(projectV3);
+        projectV3 = buildTemplateProjectV3("starter", {
+          title: "はじめてのサンプル",
+          mapperId: 0,
+        });
         saveProjectV3ToLocalStorage(projectV3);
+        try {
+          project = projectV3ToV2(projectV3);
+          saveProjectToLocalStorage(project);
+        } catch {
+          /* mapper 非対応などは無視 */
+        }
         createExplorerHandle?.setProject(projectV3);
         const playerId = projectV3.characterOrder.find((id) => projectV3.characters[id]?.name === "Player");
         if (playerId) createExplorerHandle?.selectCharacter(playerId);
-        if (project.title) cartTitleInput.value = project.title;
-        if (project.author) cartAuthorInput.value = project.author;
+        if (projectV3.title) cartTitleInput.value = projectV3.title;
+        if (projectV3.author) cartAuthorInput.value = projectV3.author;
         refreshPartSelect();
         refreshSceneSelect();
       },

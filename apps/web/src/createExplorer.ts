@@ -7,7 +7,6 @@ import * as Blockly from "blockly/core";
 import {
   CREATE_MAPPER_IDS,
   createEmptyBitmap,
-  createEmptyProjectV3,
   findOrCreatePalette,
   newAssetId,
   parseProjectAnyToV3,
@@ -39,6 +38,12 @@ import { partToolboxForMapper, sceneToolboxForMapper } from "./blocks/toolbox.js
 import { listMapperCapabilities, MAPPER_CAPABILITIES } from "./mapperCapabilities.js";
 import { mountPianoRoll, type PianoRollHandle } from "./pianoRoll.js";
 import { defaultLengthFrames } from "./soundSequence.js";
+import {
+  CREATE_TEMPLATES,
+  buildTemplateProjectV3,
+  isCreateTemplateId,
+  type CreateTemplateId,
+} from "./createTemplates.js";
 
 export type ExplorerSelection =
   | { kind: "project" }
@@ -122,15 +127,20 @@ export function mountCreateExplorer(
 
   function flushBlocks(): void {
     if (!blockWorkspace || !blockTarget) return;
+    const saved = Blockly.serialization.workspaces.save(blockWorkspace);
+    const empty = isEmptyBlockState(saved);
     if (blockTarget.kind === "character") {
       const ch = project.characters[blockTarget.id];
       if (!ch) return;
-      ch.behaviorBlocks = Blockly.serialization.workspaces.save(blockWorkspace);
+      // テンプレの legacyCode を空ブロックで消さない
+      if (empty && ch.legacyCode?.trim()) return;
+      ch.behaviorBlocks = saved;
       ch.legacyCode = generatePartBody(blockWorkspace);
     } else {
       const sc = project.scenes[blockTarget.id];
       if (!sc) return;
-      sc.logicBlocks = Blockly.serialization.workspaces.save(blockWorkspace);
+      if (empty && sc.legacyCode?.trim()) return;
+      sc.logicBlocks = saved;
       sc.legacyCode = generateSceneBody(blockWorkspace);
     }
   }
@@ -275,10 +285,24 @@ export function mountCreateExplorer(
       const caps = listMapperCapabilities();
       editor.innerHTML = `
         <h2>新規プロジェクト</h2>
-        <p class="muted">最初にマッパーを選びます。命令セットは当面共通で、容量とビルド可否が変わります。</p>
+        <p class="muted">テンプレートでジャンルの骨組みを選び、マッパーを決めて作成します。ビルドは当面 NROM(0) のみです。</p>
         <label class="create-field">タイトル
           <input type="text" id="wiz-title" value="新規プロジェクト" />
         </label>
+        <fieldset class="template-wizard">
+          <legend>テンプレート</legend>
+          ${CREATE_TEMPLATES.map(
+            (t, i) => `
+            <label class="template-card${i === 1 ? " template-card--recommended" : ""}">
+              <input type="radio" name="wiz-template" value="${t.id}"${i === 1 ? " checked" : ""} />
+              <span class="template-card-body">
+                <strong>${escapeHtml(t.title)}</strong>
+                <span class="template-badge">${escapeHtml(t.badge)}</span>
+                <span class="muted">${escapeHtml(t.blurb)}</span>
+              </span>
+            </label>`,
+          ).join("")}
+        </fieldset>
         <fieldset class="mapper-wizard">
           <legend>マッパー</legend>
           ${caps
@@ -298,18 +322,26 @@ export function mountCreateExplorer(
             .join("")}
         </fieldset>
         <div class="create-wizard-actions">
-          <button type="button" id="wiz-create">このマッパーで作成</button>
+          <button type="button" id="wiz-create">この内容で作成</button>
           <button type="button" id="wiz-cancel" class="secondary">キャンセル</button>
         </div>
       `;
       editor.querySelector("#wiz-create")!.addEventListener("click", () => {
         const title = editor.querySelector<HTMLInputElement>("#wiz-title")!.value.trim() || "新規プロジェクト";
-        const checked = editor.querySelector<HTMLInputElement>('input[name="wiz-mapper"]:checked');
-        const mapperId = Number(checked?.value ?? 0) as CreateMapperId;
-        project = createEmptyProjectV3(mapperId);
-        project.title = title;
+        const checkedMapper = editor.querySelector<HTMLInputElement>('input[name="wiz-mapper"]:checked');
+        const mapperId = Number(checkedMapper?.value ?? 0) as CreateMapperId;
+        const checkedTpl = editor.querySelector<HTMLInputElement>('input[name="wiz-template"]:checked');
+        const tplRaw = checkedTpl?.value ?? "starter";
+        const tplId: CreateTemplateId = isCreateTemplateId(tplRaw) ? tplRaw : "starter";
+        project = buildTemplateProjectV3(tplId, { title, mapperId });
         selection = { kind: "project" };
         commit();
+        const firstCh = project.characterOrder[0];
+        if (firstCh) {
+          selection = { kind: "character", id: firstCh };
+          renderTree();
+          renderEditor();
+        }
       });
       editor.querySelector("#wiz-cancel")!.addEventListener("click", () => {
         selection = { kind: "project" };
@@ -375,7 +407,8 @@ export function mountCreateExplorer(
             JSON を読み込む
             <input type="file" id="v3-import-input" accept="application/json,.json,.famijs.json" hidden />
           </label>
-          <button type="button" id="v3-reset-sample-btn" class="secondary">サンプルに戻す</button>
+          <button type="button" id="v3-reset-sample-btn" class="secondary">入門サンプルに戻す</button>
+          <button type="button" id="v3-new-from-template-btn" class="secondary">テンプレートから新規…</button>
         </div>
         <p class="muted" id="v3-io-status"></p>
       `;
@@ -423,8 +456,23 @@ export function mountCreateExplorer(
         ioStatus.textContent = "書き出しました";
       });
       editor.querySelector("#v3-reset-sample-btn")!.addEventListener("click", () => {
-        if (!window.confirm("サンプル（Player / Mover）に戻しますか？今の内容は失われます。")) return;
-        options.onResetSample?.();
+        if (!window.confirm("入門サンプル（Player / Mover）に戻しますか？今の内容は失われます。")) return;
+        if (options.onResetSample) {
+          options.onResetSample();
+        } else {
+          project = buildTemplateProjectV3("starter", {
+            title: "はじめてのサンプル",
+            mapperId: project.mapperId,
+          });
+          selection = { kind: "project" };
+          commit();
+        }
+      });
+      editor.querySelector("#v3-new-from-template-btn")!.addEventListener("click", () => {
+        if (!window.confirm("テンプレート選択に進みます。今のプロジェクトは置き換わります。よろしいですか？")) return;
+        selection = { kind: "wizard" };
+        renderTree();
+        renderEditor();
       });
       editor.querySelector<HTMLInputElement>("#v3-import-input")!.addEventListener("change", async (e) => {
         const file = (e.target as HTMLInputElement).files?.[0];
@@ -601,6 +649,14 @@ export function mountCreateExplorer(
         <canvas id="v3-ch-preview" class="chr-preview-canvas" width="128" height="128"></canvas>
         <h3>振る舞い（ブロック）</h3>
         <p class="muted">左のツールボックスからブロックを置きます。複数タイルのビットマップは下のボタンで drawSprite を一括追加できます。</p>
+        ${
+          isEmptyBlockState(ch.behaviorBlocks) && ch.legacyCode?.trim()
+            ? `<div class="template-code-note">
+          <p class="muted">このキャラはテンプレートのコードで初期化されています。ブロックを組むとコードが置き換わります。</p>
+          <pre class="template-code-preview">${escapeHtml(ch.legacyCode)}</pre>
+        </div>`
+            : ""
+        }
         <button type="button" id="v3-ch-draw-tiles" class="secondary">ビットマップ全体を描画するブロックを追加</button>
         <div id="v3-ch-blocks" class="block-workspace create-v3-blocks"></div>
         <button type="button" id="v3-delete" class="danger">削除</button>
@@ -711,7 +767,15 @@ export function mountCreateExplorer(
         <ul class="create-placement-list">${placementRows || "<li class='muted'>まだありません</li>"}</ul>
         <button type="button" id="v3-add-placement">＋ 配置を追加</button>
         <h3>ロジック（ブロック）</h3>
-        <p class="muted">instance や update をブロックで組みます。サンプル Main には最初からブロックが入っています。</p>
+        <p class="muted">instance や update をブロックで組みます。テンプレートの Main はコード初期化の場合があります。</p>
+        ${
+          isEmptyBlockState(sc.logicBlocks) && sc.legacyCode?.trim()
+            ? `<div class="template-code-note">
+          <p class="muted">このシーンはテンプレートのコードで初期化されています。ブロックを組むとコードが置き換わります。</p>
+          <pre class="template-code-preview">${escapeHtml(sc.legacyCode)}</pre>
+        </div>`
+            : ""
+        }
         <div id="v3-sc-blocks" class="block-workspace create-v3-blocks"></div>
         <button type="button" id="v3-delete" class="danger">シーン削除</button>
       `;

@@ -307,6 +307,68 @@ h1 .subtitle {
   gap: 8px;
 }
 
+.template-wizard {
+  border: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.template-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.template-card--recommended {
+  border-color: #4a7c59;
+}
+
+.template-card input {
+  margin-top: 4px;
+}
+
+.template-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.template-badge {
+  display: inline-block;
+  width: fit-content;
+  margin: 2px 0;
+  padding: 1px 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.template-code-note {
+  margin: 8px 0 12px;
+}
+
+.template-code-preview {
+  max-height: 220px;
+  overflow: auto;
+  margin: 6px 0 0;
+  padding: 10px 12px;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  background: #12151c;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: #c8cde0;
+}
+
 .mapper-card {
   display: flex;
   gap: 10px;
