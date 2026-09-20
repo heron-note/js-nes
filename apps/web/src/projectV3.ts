@@ -10,6 +10,7 @@ import {
   parseProject,
   type Project as ProjectV2,
 } from "./project.js";
+import { validateToneEvent, type ToneEvent } from "./soundSequence.js";
 
 export const PROJECT_V3_VERSION = 3 as const;
 
@@ -71,6 +72,10 @@ export interface SoundAsset {
   channel: 0 | 1 | 2 | 3;
   note: number;
   duration: number;
+  /** シーケンス全長（フレーム）。省略時は単発 or events から推定。 */
+  lengthFrames?: number;
+  /** ピアノロール／メロディ。あれば playSound 時にシーケンス再生。 */
+  events?: ToneEvent[];
 }
 
 export interface ScenePlacement {
@@ -286,7 +291,21 @@ function validateSound(value: unknown, id: string): SoundAsset {
   }
   const note = assertIntInRange(s.note, 0, 255, `sounds.${id}.note`);
   const duration = assertIntInRange(s.duration, 0, 255, `sounds.${id}.duration`);
-  return { id, name: s.name, channel: s.channel, note, duration };
+  const out: SoundAsset = { id, name: s.name, channel: s.channel, note, duration };
+  if (typeof s.lengthFrames === "number") {
+    out.lengthFrames = assertIntInRange(s.lengthFrames, 1, 255, `sounds.${id}.lengthFrames`);
+  }
+  if (Array.isArray(s.events)) {
+    if (s.events.length > 64) {
+      throw new ProjectV3FormatError(`sounds.${id}.events は最大 64 個です`);
+    }
+    try {
+      out.events = s.events.map((ev, i) => validateToneEvent(ev, `sounds.${id}.events[${i}]`));
+    } catch (err: unknown) {
+      throw new ProjectV3FormatError(err instanceof Error ? err.message : String(err));
+    }
+  }
+  return out;
 }
 
 function validatePlacement(value: unknown, index: number): ScenePlacement {

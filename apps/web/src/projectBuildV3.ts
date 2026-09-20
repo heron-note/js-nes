@@ -105,12 +105,15 @@ export function projectV3ToV2(v3: ProjectV3): Project {
 
   const sounds: ProjectSound[] = v3.soundOrder.map((id) => {
     const s = v3.sounds[id]!;
-    return {
+    const out: ProjectSound & { events?: typeof s.events; lengthFrames?: number } = {
       name: dslIdent(s.name, "Sound"),
       channel: s.channel,
       note: s.note,
       duration: s.duration,
     };
+    if (s.events) out.events = s.events;
+    if (s.lengthFrames !== undefined) out.lengthFrames = s.lengthFrames;
+    return out;
   });
 
   return {

@@ -37,6 +37,8 @@ import {
 } from "./blocks/blockEditor.js";
 import { partToolboxForMapper, sceneToolboxForMapper } from "./blocks/toolbox.js";
 import { listMapperCapabilities, MAPPER_CAPABILITIES } from "./mapperCapabilities.js";
+import { mountPianoRoll, type PianoRollHandle } from "./pianoRoll.js";
+import { defaultLengthFrames } from "./soundSequence.js";
 
 export type ExplorerSelection =
   | { kind: "project" }
@@ -63,6 +65,7 @@ export type CreateExplorerHandle = {
 export type CreateExplorerOptions = {
   onBuild?: () => void;
   onResetSample?: () => void;
+  audio?: import("./audio.js").AudioEngine;
 };
 
 export function mountCreateExplorer(
@@ -76,6 +79,7 @@ export function mountCreateExplorer(
   let bitmapEditor: BitmapEditorHandle | null = null;
   let blockWorkspace: Blockly.WorkspaceSvg | null = null;
   let blockTarget: { kind: "character" | "scene"; id: string } | null = null;
+  let pianoRoll: PianoRollHandle | null = null;
 
   root.innerHTML = `
     <div class="create-explorer">
@@ -129,6 +133,11 @@ export function mountCreateExplorer(
       sc.logicBlocks = Blockly.serialization.workspaces.save(blockWorkspace);
       sc.legacyCode = generateSceneBody(blockWorkspace);
     }
+  }
+
+  function destroyPianoRoll(): void {
+    pianoRoll?.destroy();
+    pianoRoll = null;
   }
 
   function destroyBlockEditor(): void {
@@ -260,6 +269,7 @@ export function mountCreateExplorer(
   function renderEditor(): void {
     destroyBitmapEditor();
     destroyBlockEditor();
+    destroyPianoRoll();
 
     if (selection.kind === "wizard") {
       const caps = listMapperCapabilities();
@@ -641,42 +651,31 @@ export function mountCreateExplorer(
         editor.innerHTML = `<p class="muted">音が見つかりません</p>`;
         return;
       }
+      if (!snd.lengthFrames) snd.lengthFrames = defaultLengthFrames();
       editor.innerHTML = `
-        <h2>音</h2>
+        <h2>音（ピアノロール）</h2>
         <label class="create-field">名前
           <input type="text" id="v3-snd-name" value="${escapeAttr(snd.name)}" />
         </label>
-        <label class="create-field">チャンネル
-          <input type="number" id="v3-snd-ch" min="0" max="3" value="${snd.channel}" />
-        </label>
-        <label class="create-field">音階
-          <input type="number" id="v3-snd-note" min="0" max="255" value="${snd.note}" />
-        </label>
-        <label class="create-field">長さ
-          <input type="number" id="v3-snd-dur" min="0" max="255" value="${snd.duration}" />
-        </label>
+        <p class="muted">単音ではなく、時間軸にノートを置いてメロディ／SE を作ります。コードからは <code>playSound(${escapeHtml(snd.name)})</code> で再生できます。</p>
+        <div id="v3-snd-piano"></div>
         <button type="button" id="v3-delete" class="danger">削除</button>
       `;
-      const bindNum = (id: string, apply: (n: number) => void) => {
-        editor.querySelector<HTMLInputElement>(id)!.addEventListener("change", (e) => {
-          apply(Number((e.target as HTMLInputElement).value) | 0);
-          commit();
-        });
-      };
       editor.querySelector<HTMLInputElement>("#v3-snd-name")!.addEventListener("change", (e) => {
         snd.name = (e.target as HTMLInputElement).value;
         commit();
       });
-      bindNum("#v3-snd-ch", (n) => {
-        snd.channel = Math.max(0, Math.min(3, n)) as 0 | 1 | 2 | 3;
-      });
-      bindNum("#v3-snd-note", (n) => {
-        snd.note = Math.max(0, Math.min(255, n));
-      });
-      bindNum("#v3-snd-dur", (n) => {
-        snd.duration = Math.max(0, Math.min(255, n));
-      });
       editor.querySelector("#v3-delete")!.addEventListener("click", () => deleteSound(snd.id));
+      const pianoHost = editor.querySelector<HTMLElement>("#v3-snd-piano")!;
+      if (options.audio) {
+        pianoRoll = mountPianoRoll(pianoHost, {
+          getSound: () => snd,
+          onChange: () => softCommit(),
+          audio: options.audio,
+        });
+      } else {
+        pianoHost.innerHTML = `<p class="muted">オーディオエンジンが未接続のためロールを表示できません。</p>`;
+      }
       return;
     }
 
@@ -803,7 +802,15 @@ export function mountCreateExplorer(
       selection = { kind: "character", id };
     } else if (folder === "sounds") {
       const id = newAssetId("snd");
-      project.sounds[id] = { id, name: `音${project.soundOrder.length + 1}`, channel: 0, note: 24, duration: 10 };
+      project.sounds[id] = {
+        id,
+        name: `音${project.soundOrder.length + 1}`,
+        channel: 0,
+        note: 24,
+        duration: 8,
+        lengthFrames: defaultLengthFrames(),
+        events: [{ t: 0, channel: 0, note: 24, duration: 8 }],
+      };
       project.soundOrder.push(id);
       selection = { kind: "sound", id };
     } else {
@@ -899,6 +906,7 @@ export function mountCreateExplorer(
     setProject: (next) => {
       destroyBitmapEditor();
       destroyBlockEditor();
+      destroyPianoRoll();
       project = next;
       selection = { kind: "project" };
       renderTree();

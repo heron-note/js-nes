@@ -11,6 +11,8 @@ export interface CompileAssets {
    * 気にする必要はない。
    */
   partTiles?: Record<string, ArrayLike<number>[]>;
+  /** playSequence(id) 用。id は配列インデックス。 */
+  sequences?: import("./codegen.js").SoundSequenceDef[];
 }
 
 export interface CompileResult {
@@ -40,7 +42,7 @@ export function compile(source: string, assets: CompileAssets = {}): CompileResu
     }
   }
 
-  const prgRom = generate(program, { tileOffsets });
+  const prgRom = generate(program, { tileOffsets, sequences: assets.sequences ?? [] });
 
   const chrRom = tiles.length > 0 ? packChrRom(tiles) : new Uint8Array(0x2000);
 

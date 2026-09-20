@@ -72,6 +72,9 @@ export class Emitter {
   DEX(): this {
     return this.emit(0xca);
   }
+  INX(): this {
+    return this.emit(0xe8);
+  }
   RTS(): this {
     return this.emit(0x60);
   }
@@ -97,6 +100,15 @@ export class Emitter {
   }
   LDX_IMM(v: number): this {
     return this.emit(0xa2, v);
+  }
+  LDY_IMM(v: number): this {
+    return this.emit(0xa0, v);
+  }
+  INY(): this {
+    return this.emit(0xc8);
+  }
+  CPY_IMM(v: number): this {
+    return this.emit(0xc0, v);
   }
   CMP_IMM(v: number): this {
     return this.emit(0xc9, v);
@@ -139,6 +151,17 @@ export class Emitter {
   ROL_ZP(a: number): this {
     return this.emit(0x26, a);
   }
+  STY_ZP(a: number): this {
+    return this.emit(0x84, a);
+  }
+  ADC_ZP(a: number): this {
+    return this.emit(0x65, a);
+  }
+
+  // --- (zp),Y ---
+  LDA_IND_Y(zp: number): this {
+    return this.emit(0xb1, zp);
+  }
 
   // --- absolute ---
   LDA_ABS(a: number): this {
@@ -146,6 +169,9 @@ export class Emitter {
   }
   STA_ABS(a: number): this {
     return this.emit(0x8d, a & 0xff, (a >> 8) & 0xff);
+  }
+  INC_ABS(a: number): this {
+    return this.emit(0xee, a & 0xff, (a >> 8) & 0xff);
   }
   STA_ABS_X(a: number): this {
     return this.emit(0x9d, a & 0xff, (a >> 8) & 0xff);
@@ -201,6 +227,11 @@ export class Emitter {
   /** 生バイト列（データテーブル等）を直接埋め込む。 */
   DB(...values: number[]): this {
     return this.emit(...values);
+  }
+
+  /** 16bit 絶対アドレス（ラベル）をリトルエンディアンで埋め込む。 */
+  DW_LABEL(label: string): this {
+    return this.absRef(label);
   }
 
   assemble(): AssembledCode {

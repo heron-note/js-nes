@@ -357,6 +357,95 @@ h1 .subtitle {
   font-size: 0.9rem;
 }
 
+.piano-roll {
+  margin-top: 10px;
+}
+
+.piano-roll-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.piano-roll-toolbar label {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.piano-roll-channels {
+  display: flex;
+  gap: 4px;
+}
+
+.piano-ch-btn {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.piano-ch-btn.active {
+  outline: 2px solid #7dcea0;
+}
+
+.piano-roll-hint {
+  margin: 0 0 8px;
+}
+
+.piano-roll-scroll {
+  overflow: auto;
+  max-height: min(420px, 55vh);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #12151c;
+}
+
+.piano-roll-grid {
+  display: grid;
+  grid-template-columns: 48px repeat(var(--pr-cols, 32), 22px);
+  grid-template-rows: repeat(var(--pr-rows, 36), 14px);
+  width: max-content;
+}
+
+.pr-note-lab {
+  font-size: 9px;
+  color: #9aa3b5;
+  display: flex;
+  align-items: center;
+  padding-left: 2px;
+  border-bottom: 1px solid #1c2230;
+  position: sticky;
+  left: 0;
+  background: #12151c;
+  z-index: 1;
+}
+
+.pr-cell {
+  margin: 0;
+  padding: 0;
+  border: 1px solid #1c2230;
+  border-radius: 0;
+  background: #181c26;
+  cursor: pointer;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pr-cell:hover {
+  background: #2a3142;
+}
+
+.pr-cell.filled {
+  background: #3d6b8a;
+}
+
+.pr-cell.filled.start {
+  background: #5b9fd4;
+}
+
 .create-explorer {
   display: grid;
   grid-template-columns: minmax(200px, 280px) 1fr;

@@ -82,6 +82,11 @@ const BUILTINS: Record<string, BuiltinDef> = {
 
 export class CodegenError extends Error {}
 
+export interface SoundSequenceDef {
+  /** ソート済みイベント（t, channel, note, duration）最大 32 */
+  events: Array<{ t: number; channel: number; note: number; duration: number }>;
+}
+
 export interface GenerateOptions {
   /**
    * パーツ種別ごとのタイル番号オフセット（Phase 3: 資産リンク）。
@@ -90,11 +95,17 @@ export interface GenerateOptions {
    * ドット絵作者は自分のタイルシート内でのローカルな0起点の番号だけを意識すればよい。
    */
   tileOffsets?: ReadonlyMap<string, number>;
+  /** playSequence(id) 用テーブル（id は配列インデックス） */
+  sequences?: SoundSequenceDef[];
 }
 
 export function generate(program: Program, options: GenerateOptions = {}): Uint8Array {
-  const { tileOffsets } = options;
+  const { tileOffsets, sequences = [] } = options;
   const isV1 = program.parts.length > 0 || program.scenes.length > 0;
+  const builtins: Record<string, BuiltinDef> = { ...BUILTINS };
+  if (sequences.length > 0) {
+    builtins.playSequence = { label: "play_sequence", arity: 1 };
+  }
 
   if (isV1) {
     if (program.functions.length > 0) {
@@ -315,7 +326,7 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   }
 
   function genPartCall(call: PartCallExpr, ctx: PartGenCtx): void {
-    const def = BUILTINS[call.callee];
+    const def = builtins[call.callee];
     if (!def) {
       throw new CodegenError(`${call.line}行目: 未知の関数 '${call.callee}' が呼び出されています`);
     }
@@ -409,7 +420,7 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   }
 
   function genCall(call: CallExpr): void {
-    const def = BUILTINS[call.callee];
+    const def = builtins[call.callee];
     if (!def) {
       throw new CodegenError(`${call.line}行目: 未知の関数 '${call.callee}' が呼び出されています`);
     }
@@ -580,6 +591,10 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
 
   e.LDA_IMM(0b0000_1111); // $4015: Pulse1/Pulse2/Triangle/Noiseを有効化
   e.STA_ABS(0x4015);
+  if (sequences.length > 0) {
+    e.LDA_IMM(0);
+    e.STA_ABS(0x07e0); // SEQ_ACTIVE クリア
+  }
 
   // OAMシャドウ($0200-$02FF)を$FFで埋めておく。drawSprite()で使わなかったスプライト
   // （Y座標が0のまま）は画面上端に表示されてしまうため、Y=$FF（画面外）にして
@@ -611,6 +626,9 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   e.STA_ZP(BTN_STATE_PREV_ZP); // _just_pressed判定用に、上書きされる前の状態を退避
   e.JSR("read_controller1");
   e.JSR("sound_tick");
+  if (sequences.length > 0) {
+    e.JSR("seq_tick");
+  }
   e.JSR("update_user");
   e.LDA_IMM(0x02); // OAMシャドウ($0200-$02FF)のページ番号
   e.STA_ABS(0x4014); // OAM DMA発火（drawSpriteの結果をPPU側OAMへ反映）
@@ -809,6 +827,80 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   e.STA_ZP(DUR3);
   e.RTS();
 
+  // --- シーケンス再生（ピアノロール）。シーケンス資産があるときだけ埋め込む ---
+  if (sequences.length > 0) {
+    const SEQ_PTR = 0xfe;
+    const SEQ_ACTIVE = 0x07e0;
+    const SEQ_FRAME = 0x07e1;
+    const SEQ_LEFT = 0x07e2;
+
+    e.label("seq_tick");
+    e.LDA_ABS(SEQ_ACTIVE);
+    e.BEQ("seq_tick_done");
+    e.label("seq_tick_fire");
+    e.LDA_ABS(SEQ_LEFT);
+    e.BEQ("seq_tick_finish");
+    e.LDY_IMM(0);
+    e.LDA_IND_Y(SEQ_PTR);
+    e.CMP_ABS(SEQ_FRAME);
+    e.BNE("seq_tick_advance_frame");
+    e.LDY_IMM(1);
+    e.LDA_IND_Y(SEQ_PTR);
+    e.STA_ZP(ARG_BASE + 0);
+    e.LDY_IMM(2);
+    e.LDA_IND_Y(SEQ_PTR);
+    e.STA_ZP(ARG_BASE + 1);
+    e.LDY_IMM(3);
+    e.LDA_IND_Y(SEQ_PTR);
+    e.STA_ZP(ARG_BASE + 2);
+    e.JSR("play_tone");
+    e.CLC();
+    e.LDA_ZP(SEQ_PTR);
+    e.ADC_IMM(4);
+    e.STA_ZP(SEQ_PTR);
+    e.LDA_ZP(SEQ_PTR + 1);
+    e.ADC_IMM(0);
+    e.STA_ZP(SEQ_PTR + 1);
+    e.LDA_ABS(SEQ_LEFT);
+    e.SEC();
+    e.SBC_IMM(1);
+    e.STA_ABS(SEQ_LEFT);
+    e.JMP("seq_tick_fire");
+    e.label("seq_tick_advance_frame");
+    e.INC_ABS(SEQ_FRAME);
+    e.RTS();
+    e.label("seq_tick_finish");
+    e.LDA_IMM(0);
+    e.STA_ABS(SEQ_ACTIVE);
+    e.label("seq_tick_done");
+    e.RTS();
+
+    e.label("play_sequence");
+    e.LDA_ZP(ARG_BASE + 0);
+    e.ASL_ACC();
+    e.TAX();
+    e.LDA_ABS_X_LABEL("seq_ptrs");
+    e.STA_ZP(SEQ_PTR);
+    e.INX();
+    e.LDA_ABS_X_LABEL("seq_ptrs");
+    e.STA_ZP(SEQ_PTR + 1);
+    e.LDY_IMM(0);
+    e.LDA_IND_Y(SEQ_PTR);
+    e.STA_ABS(SEQ_LEFT);
+    e.CLC();
+    e.LDA_ZP(SEQ_PTR);
+    e.ADC_IMM(1);
+    e.STA_ZP(SEQ_PTR);
+    e.LDA_ZP(SEQ_PTR + 1);
+    e.ADC_IMM(0);
+    e.STA_ZP(SEQ_PTR + 1);
+    e.LDA_IMM(0);
+    e.STA_ABS(SEQ_FRAME);
+    e.LDA_IMM(1);
+    e.STA_ABS(SEQ_ACTIVE);
+    e.RTS();
+  }
+
   // --- データ: 音階→APU周期テーブル（コンパイル時に生成、docs/03_DSL_SPEC.md参照） ---
   const pulsePeriods = buildPulsePeriodTable();
   const trianglePeriods = buildTrianglePeriodTable();
@@ -820,6 +912,22 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   e.DB(...lowBytes(trianglePeriods));
   e.label("tri_period_hi");
   e.DB(...highBytes(trianglePeriods));
+
+  // シーケンステーブル
+  if (sequences.length > 0) {
+    for (let i = 0; i < sequences.length; i++) {
+      const events = sequences[i]!.events.slice(0, 32).sort((a, b) => a.t - b.t);
+      e.label(`seq_data_${i}`);
+      e.DB(events.length);
+      for (const ev of events) {
+        e.DB(ev.t & 0xff, ev.channel & 0xff, ev.note & 0xff, ev.duration & 0xff);
+      }
+    }
+    e.label("seq_ptrs");
+    for (let i = 0; i < sequences.length; i++) {
+      e.DW_LABEL(`seq_data_${i}`);
+    }
+  }
 
   // --- ユーザー関数 ---
   if (isV1) {

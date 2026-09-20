@@ -43,7 +43,7 @@ import { ensureV3SampleBlocks } from "./ensureV3SampleBlocks.js";
 import { projectV3ToV2, ProjectV3BuildError } from "./projectBuildV3.js";
 import { resolveRomFromFile } from "./romFromFile.js";
 import { fetchSampleRomBytes, loadSampleCatalog, type SampleRomEntry } from "./sampleRoms.js";
-import { buildProjectAssets, buildProjectSource, ProjectBuildError } from "./projectBuild.js";
+import { buildProjectAssets, buildProjectSequences, buildProjectSource, ProjectBuildError } from "./projectBuild.js";
 import {
   clearStoredToken,
   fetchGithubUser,
@@ -627,7 +627,8 @@ function buildAndRun(): void {
     const source = buildProjectSource(project);
     buildSourcePreview!.value = source;
     const assets = buildProjectAssets(project);
-    const { rom } = compile(source, assets);
+    const { sequences } = buildProjectSequences(project);
+    const { rom } = compile(source, { ...assets, sequences });
     loadRomInWorker(rom, "build");
     lastBuiltRom = rom;
     downloadBtn!.disabled = false;
@@ -735,6 +736,7 @@ if (createExplorerRoot) {
     },
     {
       onBuild: () => buildAndRun(),
+      audio,
       onResetSample: () => {
         project = createDefaultProject();
         seedDefaultProjectBlocks(project);
