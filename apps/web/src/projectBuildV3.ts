@@ -33,6 +33,16 @@ function sceneCodeFromPlacements(v3: ProjectV3, sceneId: string): string {
   if (!sc || sc.placements.length === 0) return "";
   const lines: string[] = [];
   const calls: string[] = [];
+  const initLines: string[] = [];
+
+  const firstPalId = v3.paletteOrder[0];
+  const firstPal = firstPalId ? v3.palettes[firstPalId] : undefined;
+  if (firstPal) {
+    const [c0, c1, c2, c3] = firstPal.colors;
+    initLines.push(`  setPalette(0, ${c0}, ${c1}, ${c2}, ${c3});`);
+    initLines.push(`  setSpritePalette(0, ${c0}, ${c1}, ${c2}, ${c3});`);
+  }
+
   sc.placements.forEach((pl, i) => {
     const ch = v3.characters[pl.characterId];
     if (!ch) return;
@@ -40,9 +50,13 @@ function sceneCodeFromPlacements(v3: ProjectV3, sceneId: string): string {
     const instName = dslIdent(`p${i}_${ch.name}`, `inst${i}`);
     lines.push(`instance ${instName}: ${partName};`);
     calls.push(`  ${partName}.move(${instName});`);
+    // 配置座標を初期値として書く（field がある前提。無ければ実行時無視されうる）
+    initLines.push(`  // placement ${instName} @ ${pl.x},${pl.y}`);
   });
   if (lines.length === 0) return "";
-  return `${lines.join("\n")}\n\nupdate() {\n${calls.join("\n")}\n}\n`;
+  const initBlock =
+    initLines.length > 0 ? `\nfunction init() {\n${initLines.join("\n")}\n}\n` : "";
+  return `${lines.join("\n")}\n${initBlock}\nupdate() {\n${calls.join("\n")}\n}\n`;
 }
 
 /**
@@ -69,6 +83,13 @@ export function projectV3ToV2(v3: ProjectV3): Project {
     if (ch.behaviorBlocks !== undefined) part.blocks = ch.behaviorBlocks;
     return part;
   });
+
+  const totalTiles = parts.reduce((n, p) => n + p.tiles.length, 0);
+  if (totalTiles > 256) {
+    throw new ProjectV3BuildError(
+      `CHR タイル数が ${totalTiles} 枚で NROM 上限（256）を超えています。ビットマップを減らすか小さくしてください。`,
+    );
+  }
 
   const scenes: ProjectScene[] = v3.sceneOrder.map((id, i) => {
     const sc = v3.scenes[id]!;

@@ -1,0 +1,8 @@
+file 'D:/note/js_nes/docs/promo-video/work/clip_00.mp4'
+file 'D:/note/js_nes/docs/promo-video/work/clip_01.mp4'
+file 'D:/note/js_nes/docs/promo-video/work/clip_02.mp4'
+file 'D:/note/js_nes/docs/promo-video/work/clip_03.mp4'
+file 'D:/note/js_nes/docs/promo-video/work/clip_04.mp4'
+file 'D:/note/js_nes/docs/promo-video/work/clip_05.mp4'
+file 'D:/note/js_nes/docs/promo-video/work/clip_06.mp4'
+file 'D:/note/js_nes/docs/promo-video/work/clip_07.mp4'

@@ -10,6 +10,8 @@ import {
   createEmptyProjectV3,
   findOrCreatePalette,
   newAssetId,
+  parseProjectAnyToV3,
+  serializeProjectV3,
   type CreateMapperId,
   type ProjectV3,
   type ScenePlacement,
@@ -353,6 +355,15 @@ export function mountCreateExplorer(
           <button type="button" id="v3-build-btn">ビルド&amp;実行</button>
           <span class="muted">NROM(0) のみ。結果は左プレビューへ。</span>
         </div>
+        <h3>プロジェクトファイル</h3>
+        <div class="create-wizard-actions">
+          <button type="button" id="v3-export-btn" class="secondary">JSON を書き出す</button>
+          <label class="secondary create-file-label">
+            JSON を読み込む
+            <input type="file" id="v3-import-input" accept="application/json,.json,.famijs.json" hidden />
+          </label>
+        </div>
+        <p class="muted" id="v3-io-status"></p>
       `;
       editor.querySelector<HTMLInputElement>("#v3-title")!.addEventListener("change", (e) => {
         project = { ...project, title: (e.target as HTMLInputElement).value };
@@ -384,6 +395,34 @@ export function mountCreateExplorer(
         flushBlocks();
         persist();
         options.onBuild?.();
+      });
+      const ioStatus = editor.querySelector<HTMLParagraphElement>("#v3-io-status")!;
+      editor.querySelector("#v3-export-btn")!.addEventListener("click", () => {
+        flushBlocks();
+        const blob = new Blob([serializeProjectV3(project)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${project.title || "project"}.herocon.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        ioStatus.textContent = "書き出しました";
+      });
+      editor.querySelector<HTMLInputElement>("#v3-import-input")!.addEventListener("change", async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          destroyBitmapEditor();
+          destroyBlockEditor();
+          project = parseProjectAnyToV3(text);
+          selection = { kind: "project" };
+          commit();
+          ioStatus.textContent = `「${file.name}」を読み込みました`;
+        } catch (err: unknown) {
+          ioStatus.textContent = err instanceof Error ? err.message : String(err);
+        }
+        (e.target as HTMLInputElement).value = "";
       });
       return;
     }
@@ -543,7 +582,7 @@ export function mountCreateExplorer(
         </label>
         <canvas id="v3-ch-preview" class="chr-preview-canvas" width="128" height="128"></canvas>
         <h3>振る舞い（ブロック）</h3>
-        <p class="muted">左のツールボックスからブロックを置きます。コードはビルド時に自動生成されます。</p>
+        <p class="muted">左のツールボックスからブロックを置きます。コードはビルド時に自動生成されます。ビットマップが複数タイルのときは、drawSprite の tile 番号を 0,1,2… と並べてください。</p>
         <div id="v3-ch-blocks" class="block-workspace create-v3-blocks"></div>
         <button type="button" id="v3-delete" class="danger">削除</button>
       `;
