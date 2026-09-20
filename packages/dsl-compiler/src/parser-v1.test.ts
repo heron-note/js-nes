@@ -16,13 +16,13 @@ describe("parse（DSL v1: part/scene構文, Phase 1 パースのみ）", () => {
         function update() { Ball.move(b); }
       }
     `);
-    const call = program.parts[0]!.behaviors[0]!.body[0] as {
+    const stmt = program.parts[0]!.behaviors[0]!.body[0] as {
       kind: string;
-      args: Array<{ kind: string; add?: number; property?: string }>;
+      call: { kind: string; args: Array<{ kind: string; add?: number; property?: string }> };
     };
-    expect(call.kind).toBe("call");
-    expect(call.args[1]).toMatchObject({ kind: "member_add", property: "x", add: 8 });
-    expect(call.args[2]).toMatchObject({ kind: "member_add", property: "y", add: 8 });
+    expect(stmt.kind).toBe("callStmt");
+    expect(stmt.call.args[1]).toMatchObject({ kind: "member_add", property: "x", add: 8 });
+    expect(stmt.call.args[2]).toMatchObject({ kind: "member_add", property: "y", add: 8 });
   });
 
   it("part/sceneを使わないv0ソースは parts/scenes が空配列になる", () => {
