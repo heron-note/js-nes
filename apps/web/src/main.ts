@@ -16,6 +16,7 @@ import {
   generatePartBody,
   generateSceneBody,
   initBlockEditor,
+  isEmptyBlockState,
   loadDefaultMainSceneBlocks,
   loadDefaultMoverPartBlocks,
   loadDefaultPlayerPartBlocks,
@@ -37,7 +38,9 @@ import {
   migrateProjectV2toV3,
   saveProjectV3ToLocalStorage,
 } from "./projectV3.js";
-import { mountCreateExplorer } from "./createExplorer.js";
+import { mountCreateExplorer, type CreateExplorerHandle } from "./createExplorer.js";
+import { ensureV3SampleBlocks } from "./ensureV3SampleBlocks.js";
+import { projectV3ToV2, ProjectV3BuildError } from "./projectBuildV3.js";
 import { resolveRomFromFile } from "./romFromFile.js";
 import { fetchSampleRomBytes, loadSampleCatalog, type SampleRomEntry } from "./sampleRoms.js";
 import { buildProjectAssets, buildProjectSource, ProjectBuildError } from "./projectBuild.js";
@@ -280,13 +283,6 @@ let partBlockWorkspace: Blockly.WorkspaceSvg | null = null;
 let sceneBlockWorkspace: Blockly.WorkspaceSvg | null = null;
 if (partBlockWorkspaceEl) partBlockWorkspace = initBlockEditor(partBlockWorkspaceEl, PART_TOOLBOX);
 if (sceneBlockWorkspaceEl) sceneBlockWorkspace = initBlockEditor(sceneBlockWorkspaceEl, SCENE_TOOLBOX);
-
-/** Blockly serialization が空（または未設定）かどうか。 */
-function isEmptyBlockState(blocks: unknown): boolean {
-  if (!blocks || typeof blocks !== "object") return true;
-  const state = blocks as { blocks?: unknown[] };
-  return !Array.isArray(state.blocks) || state.blocks.length === 0;
-}
 
 /** デフォルトサンプルに、コードと対になるブロックを載せる（ブロック＝主編集面）。 */
 function seedDefaultProjectBlocks(proj: Project): void {
@@ -570,6 +566,8 @@ wireSubtabs('[data-panel="parts"]');
 wireSubtabs('[data-panel="scenes"]');
 
 let lastBuiltRom: Uint8Array | null = null;
+/** Create エクスプローラ（後段で mount）。ビルド前 flush 用。 */
+let createExplorerHandle: CreateExplorerHandle | null = null;
 
 function refreshCartridgeLabel(): void {
   renderCartridgeLabel(cartCanvas!, {
@@ -589,10 +587,21 @@ loadRomResultHandlers.build = (ok, message) => {
 function buildAndRun(): void {
   syncCurrentPartFromEditors();
   syncCurrentSceneFromEditors();
+  createExplorerHandle?.flush();
 
   buildError!.hidden = true;
   buildError!.textContent = "";
   try {
+    // Create v3 を正とし、ビルド経路は既存の v2 コンパイラへ落とす
+    if (createExplorerHandle) {
+      const v3 = createExplorerHandle.getProject();
+      project = projectV3ToV2(v3);
+      if (v3.title) cartTitleInput!.value = v3.title;
+      if (v3.author) cartAuthorInput!.value = v3.author;
+      refreshPartSelect();
+      refreshSceneSelect();
+    }
+
     const source = buildProjectSource(project);
     buildSourcePreview!.value = source;
     const assets = buildProjectAssets(project);
@@ -604,15 +613,20 @@ function buildAndRun(): void {
     buildStatus!.textContent = "ビルド成功";
     refreshCartridgeLabel();
 
-    // ビルド成功のたびにプロジェクト（パーツ/シーン/サウンド）をlocalStorageへ自動保存する。
     project.title = cartTitleInput!.value;
     project.author = cartAuthorInput!.value;
     saveProjectToLocalStorage(project);
+    if (createExplorerHandle) {
+      saveProjectV3ToLocalStorage(createExplorerHandle.getProject());
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     buildError!.hidden = false;
     buildError!.textContent = message;
     buildStatus!.textContent = "ビルド失敗";
+    if (err instanceof ProjectV3BuildError || err instanceof ProjectBuildError) {
+      // already shown
+    }
   }
 }
 
@@ -679,11 +693,14 @@ if (embeddedRomB64) {
   if (project.author) cartAuthorInput.value = project.author;
 }
 
-// --- Create v3 エクスプローラ（ビルドは当面 v2 のまま並行） ---
+// --- Create v3 エクスプローラ ---
 let projectV3 = loadProjectV3FromLocalStorage() ?? migrateProjectV2toV3(project);
+if (ensureV3SampleBlocks(projectV3)) {
+  saveProjectV3ToLocalStorage(projectV3);
+}
 const createExplorerRoot = document.querySelector<HTMLElement>("#create-explorer-root");
 if (createExplorerRoot) {
-  mountCreateExplorer(createExplorerRoot, projectV3, (next) => {
+  createExplorerHandle = mountCreateExplorer(createExplorerRoot, projectV3, (next) => {
     projectV3 = next;
     saveProjectV3ToLocalStorage(next);
   });
@@ -1679,14 +1696,16 @@ const modeButtons = document.querySelectorAll<HTMLButtonElement>(".mode-tabs but
 const modePanels = document.querySelectorAll<HTMLDivElement>(".mode-panel[data-mode-panel]");
 
 function setMode(mode: "play" | "create"): void {
-  // Create は準備中のため切替不可（Play 固定）
-  if (mode === "create") return;
   modeButtons.forEach((b) => b.setAttribute("aria-selected", String(b.dataset.mode === mode)));
   modePanels.forEach((p) => {
     const active = p.dataset.modePanel === mode;
     p.classList.toggle("active", active);
     p.hidden = !active;
   });
+  document.querySelector(".app")?.classList.toggle("create-mode-active", mode === "create");
+  if (mode === "create") {
+    requestAnimationFrame(() => createExplorerHandle?.resizeBlocks());
+  }
 }
 
 modeButtons.forEach((btn) => {

@@ -251,4 +251,56 @@ export function loadDefaultWorkspace(workspace: Blockly.WorkspaceSvg): void {
   loadDefaultPlayerPartBlocks(workspace);
 }
 
+export function isEmptyBlockState(blocks: unknown): boolean {
+  if (!blocks || typeof blocks !== "object") return true;
+  const state = blocks as { blocks?: unknown[] };
+  return !Array.isArray(state.blocks) || state.blocks.length === 0;
+}
+
+/**
+ * 画面外に一時ワークスペースを作ってシードし、シリアライズ結果を返す。
+ * v3 サンプルに blocks を埋め込む／空資産の初期化に使う。
+ */
+export function capturePartBlockState(
+  load: (workspace: Blockly.WorkspaceSvg) => void,
+  toolbox: Blockly.utils.toolbox.ToolboxDefinition,
+): { blocks: unknown; code: string } {
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText = "position:fixed;left:-10000px;top:0;width:640px;height:480px;opacity:0;pointer-events:none;";
+  document.body.appendChild(host);
+  const workspace = initBlockEditor(host, toolbox);
+  try {
+    load(workspace);
+    return {
+      blocks: Blockly.serialization.workspaces.save(workspace),
+      code: generatePartBody(workspace),
+    };
+  } finally {
+    workspace.dispose();
+    host.remove();
+  }
+}
+
+export function captureSceneBlockState(
+  load: (workspace: Blockly.WorkspaceSvg) => void,
+  toolbox: Blockly.utils.toolbox.ToolboxDefinition,
+): { blocks: unknown; code: string } {
+  const host = document.createElement("div");
+  host.setAttribute("aria-hidden", "true");
+  host.style.cssText = "position:fixed;left:-10000px;top:0;width:640px;height:480px;opacity:0;pointer-events:none;";
+  document.body.appendChild(host);
+  const workspace = initBlockEditor(host, toolbox);
+  try {
+    load(workspace);
+    return {
+      blocks: Blockly.serialization.workspaces.save(workspace),
+      code: generateSceneBody(workspace),
+    };
+  } finally {
+    workspace.dispose();
+    host.remove();
+  }
+}
+
 export { generateSource, generatePartBody, generateSceneBody };

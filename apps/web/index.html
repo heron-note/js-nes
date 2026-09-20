@@ -109,18 +109,16 @@
         <section class="main-pane">
           <nav class="mode-tabs" role="tablist" data-i18n-aria="modeTabs.aria" aria-label="Play または Create">
             <button type="button" role="tab" aria-selected="true" data-mode="play">Play</button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected="false"
-              data-mode="create"
-              disabled
-              aria-disabled="true"
-              data-i18n-title="create.tabTitle"
-              title="準備中"
-            >
-              <span data-i18n="create.tabLabel">Create（準備中）</span>
-            </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected="false"
+                data-mode="create"
+                data-i18n-title="create.tabTitle"
+                title="作る"
+              >
+              <span data-i18n="create.tabLabel">Create</span>
+              </button>
           </nav>
 
           <div class="mode-panels">
@@ -378,8 +376,8 @@
               <div class="panels">
                 <div class="panel active" data-panel="project">
                   <p class="muted create-v3-banner">
-                    Create v3（試作）: マッパーを根にしたツリーで資産を辿ります。描画・ブロック本接続・ビルドは後続。
-                    仕様は <code>docs/09_CREATE_PROJECT_MODEL.md</code>。
+                    Create: マッパーを選んでからツリーで資産を編集します。キャラ／シーンはブロックが主。
+                    ビルドは当面 NROM（Mapper 0）のみ。仕様は <code>docs/09_CREATE_PROJECT_MODEL.md</code>。
                   </p>
                   <div id="create-explorer-root"></div>
                 </div>

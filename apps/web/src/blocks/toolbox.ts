@@ -208,3 +208,40 @@ export const SCENE_TOOLBOX = {
     },
   ],
 };
+
+/**
+ * マッパー別ツールボックス。
+ * 現状の DSL 命令はマッパー共通のため中身は同じ。
+ * 非 NROM では「バンク（準備中）」カテゴリを足して、選べる範囲の差を UI で示す。
+ */
+export function partToolboxForMapper(mapperId: number): typeof PART_TOOLBOX {
+  if (mapperId === 0) return PART_TOOLBOX;
+  return {
+    kind: "categoryToolbox",
+    contents: [
+      ...PART_TOOLBOX.contents,
+      {
+        kind: "category",
+        name: "バンク（準備中）",
+        colour: "65",
+        contents: [],
+      },
+    ],
+  };
+}
+
+export function sceneToolboxForMapper(mapperId: number): typeof SCENE_TOOLBOX {
+  if (mapperId === 0) return SCENE_TOOLBOX;
+  return {
+    kind: "categoryToolbox",
+    contents: [
+      ...SCENE_TOOLBOX.contents,
+      {
+        kind: "category",
+        name: "バンク（準備中）",
+        colour: "65",
+        contents: [],
+      },
+    ],
+  };
+}

@@ -1,12 +1,11 @@
 /**
- * Create v3 エクスプローラ殻。
- * ツリーで資産を辿り、選択ノードのプレースホルダ編集を右ペインに出す。
- * 本格エディタ（ビットマップ描画・ブロック配線）は後続。
+ * Create v3 エクスプローラ。
+ * ツリーで資産を辿り、パレット／ビットマップ／キャラ・シーンのブロックを編集する。
  */
 
+import * as Blockly from "blockly/core";
 import {
   CREATE_MAPPER_IDS,
-  CREATE_MAPPER_LABELS,
   createEmptyBitmap,
   createEmptyProjectV3,
   findOrCreatePalette,
@@ -24,9 +23,21 @@ import {
   importFontJpBasicIntoProject,
 } from "./providedAssets.js";
 import { bitmapsForRomBuild, collectUsedAssetIds } from "./collectUsedAssets.js";
+import {
+  generatePartBody,
+  generateSceneBody,
+  initBlockEditor,
+  isEmptyBlockState,
+  loadDefaultMainSceneBlocks,
+  loadDefaultMoverPartBlocks,
+  loadDefaultPlayerPartBlocks,
+} from "./blocks/blockEditor.js";
+import { partToolboxForMapper, sceneToolboxForMapper } from "./blocks/toolbox.js";
+import { listMapperCapabilities, MAPPER_CAPABILITIES } from "./mapperCapabilities.js";
 
 export type ExplorerSelection =
   | { kind: "project" }
+  | { kind: "wizard" }
   | { kind: "folder"; folder: "palettes" | "bitmaps" | "characters" | "sounds" | "scenes" }
   | { kind: "palette"; id: string }
   | { kind: "bitmap"; id: string }
@@ -38,6 +49,9 @@ export type CreateExplorerHandle = {
   getProject: () => ProjectV3;
   setProject: (project: ProjectV3) => void;
   refresh: () => void;
+  /** 編集中 Blockly を資産へ書き戻す（ビルド前に呼ぶ） */
+  flush: () => void;
+  resizeBlocks: () => void;
 };
 
 export function mountCreateExplorer(
@@ -48,6 +62,8 @@ export function mountCreateExplorer(
   let project = initial;
   let selection: ExplorerSelection = { kind: "project" };
   let bitmapEditor: BitmapEditorHandle | null = null;
+  let blockWorkspace: Blockly.WorkspaceSvg | null = null;
+  let blockTarget: { kind: "character" | "scene"; id: string } | null = null;
 
   root.innerHTML = `
     <div class="create-explorer">
@@ -55,7 +71,7 @@ export function mountCreateExplorer(
         <div class="create-explorer-tree-head">エクスプローラ</div>
         <ul class="create-tree" id="create-tree-root"></ul>
         <div class="create-explorer-actions">
-          <button type="button" id="create-v3-new-btn" class="secondary">新規 v3 プロジェクト</button>
+          <button type="button" id="create-v3-new-btn" class="secondary">新規プロジェクト…</button>
         </div>
       </aside>
       <section class="create-explorer-editor" id="create-explorer-editor">
@@ -86,6 +102,89 @@ export function mountCreateExplorer(
   function destroyBitmapEditor(): void {
     bitmapEditor?.destroy();
     bitmapEditor = null;
+  }
+
+  function flushBlocks(): void {
+    if (!blockWorkspace || !blockTarget) return;
+    if (blockTarget.kind === "character") {
+      const ch = project.characters[blockTarget.id];
+      if (!ch) return;
+      ch.behaviorBlocks = Blockly.serialization.workspaces.save(blockWorkspace);
+      ch.legacyCode = generatePartBody(blockWorkspace);
+    } else {
+      const sc = project.scenes[blockTarget.id];
+      if (!sc) return;
+      sc.logicBlocks = Blockly.serialization.workspaces.save(blockWorkspace);
+      sc.legacyCode = generateSceneBody(blockWorkspace);
+    }
+  }
+
+  function destroyBlockEditor(): void {
+    flushBlocks();
+    if (blockWorkspace) {
+      blockWorkspace.dispose();
+      blockWorkspace = null;
+    }
+    blockTarget = null;
+  }
+
+  function mountPartBlocks(host: HTMLElement, characterId: string): void {
+    destroyBlockEditor();
+    const ch = project.characters[characterId];
+    if (!ch) return;
+    const workspace = initBlockEditor(host, partToolboxForMapper(project.mapperId));
+    blockWorkspace = workspace;
+    blockTarget = { kind: "character", id: characterId };
+
+    if (!isEmptyBlockState(ch.behaviorBlocks)) {
+      Blockly.serialization.workspaces.load(ch.behaviorBlocks as never, workspace);
+    } else if (ch.name === "Player") {
+      loadDefaultPlayerPartBlocks(workspace);
+      ch.behaviorBlocks = Blockly.serialization.workspaces.save(workspace);
+      ch.legacyCode = generatePartBody(workspace);
+      softCommit();
+    } else if (ch.name === "Mover") {
+      loadDefaultMoverPartBlocks(workspace);
+      ch.behaviorBlocks = Blockly.serialization.workspaces.save(workspace);
+      ch.legacyCode = generatePartBody(workspace);
+      softCommit();
+    }
+
+    workspace.addChangeListener((ev) => {
+      if (ev.isUiEvent) return;
+      flushBlocks();
+      softCommit();
+    });
+    requestAnimationFrame(() => {
+      if (blockWorkspace) Blockly.svgResize(blockWorkspace);
+    });
+  }
+
+  function mountSceneBlocks(host: HTMLElement, sceneId: string): void {
+    destroyBlockEditor();
+    const sc = project.scenes[sceneId];
+    if (!sc) return;
+    const workspace = initBlockEditor(host, sceneToolboxForMapper(project.mapperId));
+    blockWorkspace = workspace;
+    blockTarget = { kind: "scene", id: sceneId };
+
+    if (!isEmptyBlockState(sc.logicBlocks)) {
+      Blockly.serialization.workspaces.load(sc.logicBlocks as never, workspace);
+    } else if (sc.name === "Main") {
+      loadDefaultMainSceneBlocks(workspace);
+      sc.logicBlocks = Blockly.serialization.workspaces.save(workspace);
+      sc.legacyCode = generateSceneBody(workspace);
+      softCommit();
+    }
+
+    workspace.addChangeListener((ev) => {
+      if (ev.isUiEvent) return;
+      flushBlocks();
+      softCommit();
+    });
+    requestAnimationFrame(() => {
+      if (blockWorkspace) Blockly.svgResize(blockWorkspace);
+    });
   }
 
   function renderTree(): void {
@@ -148,14 +247,64 @@ export function mountCreateExplorer(
 
   function renderEditor(): void {
     destroyBitmapEditor();
+    destroyBlockEditor();
+
+    if (selection.kind === "wizard") {
+      const caps = listMapperCapabilities();
+      editor.innerHTML = `
+        <h2>新規プロジェクト</h2>
+        <p class="muted">最初にマッパーを選びます。命令セットは当面共通で、容量とビルド可否が変わります。</p>
+        <label class="create-field">タイトル
+          <input type="text" id="wiz-title" value="新規プロジェクト" />
+        </label>
+        <fieldset class="mapper-wizard">
+          <legend>マッパー</legend>
+          ${caps
+            .map(
+              (c) => `
+            <label class="mapper-card${c.buildSupported ? " mapper-card--ready" : ""}">
+              <input type="radio" name="wiz-mapper" value="${c.id}"${c.id === 0 ? " checked" : ""} />
+              <span class="mapper-card-body">
+                <strong>${c.id} — ${escapeHtml(c.name)}</strong>
+                <span class="muted">${escapeHtml(c.summary)}</span>
+                <span class="muted">PRG ${escapeHtml(c.prgHint)} / CHR ${escapeHtml(c.chrHint)}</span>
+                <span class="muted">${escapeHtml(c.blockNote)}</span>
+                <span class="mapper-badge">${c.buildSupported ? "ビルド可" : "ビルド準備中（再生用に選択可）"}</span>
+              </span>
+            </label>`,
+            )
+            .join("")}
+        </fieldset>
+        <div class="create-wizard-actions">
+          <button type="button" id="wiz-create">このマッパーで作成</button>
+          <button type="button" id="wiz-cancel" class="secondary">キャンセル</button>
+        </div>
+      `;
+      editor.querySelector("#wiz-create")!.addEventListener("click", () => {
+        const title = editor.querySelector<HTMLInputElement>("#wiz-title")!.value.trim() || "新規プロジェクト";
+        const checked = editor.querySelector<HTMLInputElement>('input[name="wiz-mapper"]:checked');
+        const mapperId = Number(checked?.value ?? 0) as CreateMapperId;
+        project = createEmptyProjectV3(mapperId);
+        project.title = title;
+        selection = { kind: "project" };
+        commit();
+      });
+      editor.querySelector("#wiz-cancel")!.addEventListener("click", () => {
+        selection = { kind: "project" };
+        renderTree();
+        renderEditor();
+      });
+      return;
+    }
 
     if (selection.kind === "project") {
       const fontCount = countImportedFontGlyphs(project);
       const used = collectUsedAssetIds(project);
       const buildBmps = bitmapsForRomBuild(project);
+      const cap = MAPPER_CAPABILITIES[project.mapperId];
       editor.innerHTML = `
         <h2>プロジェクト</h2>
-        <p class="muted">マッパーがプロジェクトの根です。容量・バンクの前提になります（詳細は docs/09_CREATE_PROJECT_MODEL.md）。</p>
+        <p class="muted">マッパーがプロジェクトの根です。使える標準ブロックは共通で、容量・バンク可否がマッパーごとに変わります。</p>
         <label class="create-field">タイトル
           <input type="text" id="v3-title" value="${escapeAttr(project.title)}" />
         </label>
@@ -165,6 +314,17 @@ export function mountCreateExplorer(
         <label class="create-field">マッパー
           <select id="v3-mapper">${mapperOptions(project.mapperId)}</select>
         </label>
+        <div class="mapper-cap-box">
+          <strong>${cap.id} — ${escapeHtml(cap.name)}</strong>
+          <p class="muted">${escapeHtml(cap.summary)}</p>
+          <p class="muted">PRG: ${escapeHtml(cap.prgHint)} ／ CHR: ${escapeHtml(cap.chrHint)}</p>
+          <p class="muted">${escapeHtml(cap.blockNote)}</p>
+          <p class="${cap.buildSupported ? "ok" : "warn"}">${
+            cap.buildSupported
+              ? "このマッパーは Create から .nes ビルドできます。"
+              : "このマッパーはまだ Create ビルド未対応です（NROM 以外は準備中）。"
+          }</p>
+        </div>
         <p class="muted">バージョン: v${project.version}</p>
 
         <h3>提供アセット</h3>
@@ -198,7 +358,6 @@ export function mountCreateExplorer(
       const importStatus = editor.querySelector<HTMLParagraphElement>("#v3-import-font-status")!;
       editor.querySelector("#v3-import-font")!.addEventListener("click", () => {
         importStatus.textContent = "取り込み中…";
-        // 大量グリフなので次フレームで実行（UI を一度描画）
         requestAnimationFrame(() => {
           try {
             const result = importFontJpBasicIntoProject(project);
@@ -365,8 +524,10 @@ export function mountCreateExplorer(
         <label class="create-field">デフォルトパレット（プレビュー・色違い用）
           <select id="v3-ch-pal">${paletteOptions(project, ch.paletteId)}</select>
         </label>
-        <p class="muted">同じビットマップに別パレットを当てれば 1P/2P の色違いが作れます。振る舞いブロックは後続。${ch.legacyCode ? "（v2 legacyCode あり）" : ""}</p>
         <canvas id="v3-ch-preview" class="chr-preview-canvas" width="128" height="128"></canvas>
+        <h3>振る舞い（ブロック）</h3>
+        <p class="muted">左のツールボックスからブロックを置きます。コードはビルド時に自動生成されます。</p>
+        <div id="v3-ch-blocks" class="block-workspace create-v3-blocks"></div>
         <button type="button" id="v3-delete" class="danger">削除</button>
       `;
       const preview = editor.querySelector<HTMLCanvasElement>("#v3-ch-preview")!;
@@ -393,6 +554,7 @@ export function mountCreateExplorer(
         redrawPreview();
       });
       editor.querySelector("#v3-delete")!.addEventListener("click", () => deleteCharacter(ch.id));
+      mountPartBlocks(editor.querySelector<HTMLElement>("#v3-ch-blocks")!, ch.id);
       return;
     }
 
@@ -472,7 +634,9 @@ export function mountCreateExplorer(
         <h3>配置</h3>
         <ul class="create-placement-list">${placementRows || "<li class='muted'>まだありません</li>"}</ul>
         <button type="button" id="v3-add-placement">＋ 配置を追加</button>
-        <p class="muted">ロジックブロックは後続。${sc.legacyCode ? "（v2 legacyCode あり）" : ""}</p>
+        <h3>ロジック（ブロック）</h3>
+        <p class="muted">instance や update をブロックで組みます。サンプル Main には最初からブロックが入っています。</p>
+        <div id="v3-sc-blocks" class="block-workspace create-v3-blocks"></div>
         <button type="button" id="v3-delete" class="danger">シーン削除</button>
       `;
       editor.querySelector<HTMLInputElement>("#v3-sc-name")!.addEventListener("change", (e) => {
@@ -514,6 +678,7 @@ export function mountCreateExplorer(
         });
       });
       editor.querySelector("#v3-delete")!.addEventListener("click", () => deleteScene(sc.id));
+      mountSceneBlocks(editor.querySelector<HTMLElement>("#v3-sc-blocks")!, sc.id);
     }
   }
 
@@ -641,20 +806,22 @@ export function mountCreateExplorer(
   }
 
   newBtn.addEventListener("click", () => {
-    if (!window.confirm("新しい v3 プロジェクトを作成しますか？（エクスプローラ上の内容が置き換わります）")) return;
-    project = createEmptyProjectV3(0);
-    project.title = "新規プロジェクト";
-    selection = { kind: "project" };
-    commit();
+    selection = { kind: "wizard" };
+    renderTree();
+    renderEditor();
   });
 
   renderTree();
   renderEditor();
 
   return {
-    getProject: () => project,
+    getProject: () => {
+      flushBlocks();
+      return project;
+    },
     setProject: (next) => {
       destroyBitmapEditor();
+      destroyBlockEditor();
       project = next;
       selection = { kind: "project" };
       renderTree();
@@ -663,6 +830,13 @@ export function mountCreateExplorer(
     refresh: () => {
       renderTree();
       renderEditor();
+    },
+    flush: () => {
+      flushBlocks();
+      persist();
+    },
+    resizeBlocks: () => {
+      if (blockWorkspace) Blockly.svgResize(blockWorkspace);
     },
   };
 }
@@ -684,9 +858,11 @@ function parseSel(raw: string): ExplorerSelection {
 }
 
 function mapperOptions(selected: CreateMapperId): string {
-  return CREATE_MAPPER_IDS.map(
-    (id) => `<option value="${id}"${id === selected ? " selected" : ""}>${CREATE_MAPPER_LABELS[id]}</option>`,
-  ).join("");
+  return CREATE_MAPPER_IDS.map((id) => {
+    const cap = MAPPER_CAPABILITIES[id];
+    const ready = cap.buildSupported ? "" : "（ビルド準備中）";
+    return `<option value="${id}"${id === selected ? " selected" : ""}>${id} — ${cap.name}${ready}</option>`;
+  }).join("");
 }
 
 function paletteOptions(project: ProjectV3, selected: string): string {

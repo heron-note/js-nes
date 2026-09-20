@@ -276,6 +276,75 @@ h1 .subtitle {
   border-radius: 6px;
 }
 
+.create-v3-blocks {
+  height: min(520px, 60vh);
+  margin-top: 8px;
+}
+
+.mapper-cap-box {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.mapper-cap-box .ok {
+  color: #7dcea0;
+  margin: 6px 0 0;
+}
+
+.mapper-cap-box .warn {
+  color: #f0c674;
+  margin: 6px 0 0;
+}
+
+.mapper-wizard {
+  border: none;
+  margin: 12px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.mapper-card {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.mapper-card--ready {
+  border-color: #4a7c59;
+}
+
+.mapper-card input {
+  margin-top: 4px;
+}
+
+.mapper-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mapper-badge {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.create-wizard-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .create-explorer {
   display: grid;
   grid-template-columns: minmax(200px, 280px) 1fr;
