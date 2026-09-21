@@ -497,8 +497,7 @@ function refreshSceneSelect(): void {
   if (sceneEditorEl) sceneEditorEl.hidden = !hasScenes;
   if (sceneRenameBtn) sceneRenameBtn.disabled = !hasScenes;
   if (sceneDeleteBtn) sceneDeleteBtn.disabled = !hasScenes;
-  // codegen.tsの制約（シーンはちょうど1つ）に合わせ、既に1つあれば追加を封じる
-  if (sceneAddBtn) sceneAddBtn.disabled = project.scenes.length >= 1;
+  if (sceneAddBtn) sceneAddBtn.disabled = false;
 }
 
 function selectScene(index: number): void {
@@ -515,14 +514,10 @@ sceneSelect?.addEventListener("change", () => {
 });
 
 sceneAddBtn?.addEventListener("click", () => {
-  if (project.scenes.length >= 1) {
-    window.alert("シーンは現在ちょうど1つまでしか使えません");
-    return;
-  }
   const name = promptForName(
     "新しいシーンの名前（例: Main）",
     project.scenes.map((s) => s.name),
-    "Main",
+    `Scene${project.scenes.length + 1}`,
   );
   if (!name) return;
   syncCurrentSceneFromEditors();

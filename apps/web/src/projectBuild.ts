@@ -8,6 +8,7 @@
  * - サウンドは名前付きアセットとして持ち（ドット絵パーツと同じ発想）、コード中の
  *   `playSound(名前)`という呼び出しを、ここで`playTone`または`playSequence`へ
  *   機械的に置き換える。DSLの文法自体は変更しない。
+ * - `gotoScene(シーン名)`も同様に、シーン宣言順のインデックスへ置き換える。
  */
 import type { Project } from "./project.js";
 import { soundToEvents } from "./soundSequence.js";
@@ -16,10 +17,12 @@ import type { SoundSequenceDef } from "@js-nes/dsl-compiler";
 export class ProjectBuildError extends Error {}
 
 const PLAY_SOUND_RE = /playSound\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g;
+const GOTO_SCENE_RE = /gotoScene\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g;
 
 export type ProjectSoundExt = Project["sounds"][number] & {
   events?: import("./soundSequence.js").ToneEvent[];
   lengthFrames?: number;
+  kind?: "bgm" | "se";
 };
 
 function resolveSounds(
@@ -43,6 +46,24 @@ function resolveSounds(
   });
 }
 
+function resolveGotoScene(code: string, project: Project): string {
+  return code.replace(GOTO_SCENE_RE, (_match, name: string) => {
+    const idx = project.scenes.findIndex((s) => s.name === name);
+    if (idx < 0) {
+      throw new ProjectBuildError(`未知のシーン '${name}' が gotoScene() で参照されています`);
+    }
+    return `gotoScene(${idx})`;
+  });
+}
+
+function resolveCode(
+  code: string,
+  project: Project,
+  sequenceIndex: Map<string, number>,
+): string {
+  return resolveGotoScene(resolveSounds(code, project, sequenceIndex), project);
+}
+
 /** プロジェクト内のシーケンス音を compile() へ渡す配列にまとめる。 */
 export function buildProjectSequences(project: Project): {
   sequences: SoundSequenceDef[];
@@ -61,6 +82,7 @@ export function buildProjectSequences(project: Project): {
         note: e.note,
         duration: Math.max(1, Math.min(255, e.duration)),
       })),
+      loop: sound.kind === "bgm",
     });
   }
   return { sequences, sequenceIndex };
@@ -73,10 +95,10 @@ export function buildProjectSource(project: Project): string {
   }
   const { sequenceIndex } = buildProjectSequences(project);
   const partsCode = project.parts
-    .map((p) => `part ${p.name} {\n${resolveSounds(p.code, project, sequenceIndex)}\n}\n\n`)
+    .map((p) => `part ${p.name} {\n${resolveCode(p.code, project, sequenceIndex)}\n}\n\n`)
     .join("");
   const scenesCode = project.scenes
-    .map((s) => `scene ${s.name} {\n${resolveSounds(s.code, project, sequenceIndex)}\n}\n\n`)
+    .map((s) => `scene ${s.name} {\n${resolveCode(s.code, project, sequenceIndex)}\n}\n\n`)
     .join("");
   return partsCode + scenesCode;
 }

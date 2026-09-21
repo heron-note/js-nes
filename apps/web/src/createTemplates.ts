@@ -1,6 +1,6 @@
 /**
  * Create 新規プロジェクト用ゲームパターンテンプレート。
- * 現状の DSL（シーンは1つ・タイルマップ無し）の範囲で、各ジャンルの骨組みを渡す。
+ * 複数シーン切替・BGM ループ・矩形重なり判定まで組み立てられる範囲で、各ジャンルの骨組みを渡す。
  */
 import {
   capturePartBlockState,
@@ -56,13 +56,13 @@ export const CREATE_TEMPLATES: CreateTemplateInfo[] = [
   {
     id: "platformer",
     title: "プラットフォーマー（旧マリオ風）",
-    blurb: "左右移動＋B ダッシュ＋A ジャンプ、2ポーズ歩行、床・敵・コイン。敵接触で一時無敵。",
+    blurb: "タイトル→本編→クリアの3シーン。歩行・ダッシュ・ジャンプ、敵／コイン接触、BGM ループ。",
     badge: "横アクション",
   },
   {
     id: "side_scroll",
     title: "横スクロール＋ゴール（SMB 風）",
-    blurb: "ダッシュ／ジャンプで右へ進み、旗でステージ進行。歩行アニメ付き。",
+    blurb: "ダッシュ／ジャンプで右へ進み、旗でクリアシーンへ。BGM ループ付き。",
     badge: "横スクロール",
   },
   {
@@ -95,6 +95,19 @@ type BuildOpts = { title?: string; mapperId?: CreateMapperId };
 
 function mainScene(project: ProjectV3): SceneAsset {
   return project.scenes[project.sceneOrder[0]!]!;
+}
+
+function sceneByName(project: ProjectV3, name: string): SceneAsset | undefined {
+  const id = project.sceneOrder.find((sid) => project.scenes[sid]?.name === name);
+  return id ? project.scenes[id] : undefined;
+}
+
+function addScene(project: ProjectV3, name: string): SceneAsset {
+  const id = newAssetId("scn");
+  const sc: SceneAsset = { id, name, placements: [], soundIds: [] };
+  project.scenes[id] = sc;
+  project.sceneOrder.push(id);
+  return sc;
 }
 
 function addBitmap(project: ProjectV3, name: string, pattern: TilePattern): string {
@@ -139,10 +152,24 @@ function addSound(
   return s;
 }
 
-function place(project: ProjectV3, characterName: string, x: number, y: number): void {
+/** 短いループ旋律を events 付き BGM として登録する。 */
+function addLoopBgm(project: ProjectV3, name: string): SoundAsset {
+  const s = addSound(project, name, 2, 24, 8, "bgm");
+  s.events = [
+    { t: 0, channel: 2, note: 24, duration: 6 },
+    { t: 8, channel: 2, note: 26, duration: 6 },
+    { t: 16, channel: 2, note: 28, duration: 6 },
+    { t: 24, channel: 2, note: 26, duration: 6 },
+  ];
+  s.lengthFrames = 32;
+  return s;
+}
+
+function place(project: ProjectV3, characterName: string, x: number, y: number, sceneName = "Main"): void {
   const chId = project.characterOrder.find((id) => project.characters[id]?.name === characterName);
   if (!chId) return;
-  mainScene(project).placements.push({ id: newAssetId("plc"), characterId: chId, x, y });
+  const sc = sceneByName(project, sceneName) ?? mainScene(project);
+  sc.placements.push({ id: newAssetId("plc"), characterId: chId, x, y });
 }
 
 function seedStarterBlocks(project: ProjectV3): void {
@@ -325,8 +352,29 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
   addSound(project, "Jump", 0, 28, 6, "se");
   addSound(project, "CoinGet", 0, 36, 8, "se");
   addSound(project, "Hurt", 1, 12, 10, "se");
+  addLoopBgm(project, "StageBgm");
 
-  mainScene(project).legacyCode = [
+  // 先頭シーンを Title に改名し、Main / Clear を追加
+  const title = mainScene(project);
+  title.name = "Title";
+  title.legacyCode = [
+    "instance titleHero: Hero;",
+    "",
+    "function init() {",
+    "  setPalette(0, 1, 33, 0, 0);",
+    "  setSpritePalette(0, 1, 34, 0, 0);",
+    "  titleHero.x = 120;",
+    "  titleHero.y = 140;",
+    "}",
+    "",
+    "function update() {",
+    "  drawSprite(0, titleHero.x, titleHero.y, 0, 0);",
+    "  if (btn.start_just_pressed) { gotoScene(Main); }",
+    "}",
+  ].join("\n");
+
+  const main = addScene(project, "Main");
+  main.legacyCode = [
     "instance hero: Hero;",
     "instance goomba: Goomba;",
     "instance coin: Coin;",
@@ -336,6 +384,11 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
     "  setPalette(0, 1, 33, 0, 0);",
     "  setSpritePalette(0, 1, 34, 0, 0);",
     "  setSpritePalette(1, 1, 22, 0, 0);",
+    "  hero.x = 40;",
+    "  hero.y = 180;",
+    "  hero.hurt = 0;",
+    "  coin.taken = 0;",
+    "  playSound(StageBgm);",
     "}",
     "",
     "function update() {",
@@ -344,22 +397,43 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
     "  Coin.move(coin);",
     "  Ground.move(ground);",
     "  if (coin.taken) { } else {",
-    dslHitBox("hero", "coin", 16, ["coin.taken = 1;", "playTone(0, 36, 8);"]),
+    dslHitBox("hero", "coin", 16, ["coin.taken = 1;", "playSound(CoinGet);"]),
     "  }",
     "  if (hero.hurt) { } else {",
     dslHitBox("hero", "goomba", 16, [
       "hero.hurt = 45;",
       "hero.x = 40;",
-      "playTone(1, 12, 10);",
+      "playSound(Hurt);",
     ]),
+    "  }",
+    "  if (coin.taken) {",
+    "    if (btn.start_just_pressed) { gotoScene(Clear); }",
     "  }",
     "}",
   ].join("\n");
 
-  place(project, "Hero", 40, 180);
-  place(project, "Goomba", 160, 180);
-  place(project, "Coin", 100, 140);
-  place(project, "Ground", 0, 188);
+  const clear = addScene(project, "Clear");
+  clear.legacyCode = [
+    "instance clearHero: Hero;",
+    "",
+    "function init() {",
+    "  setPalette(0, 1, 33, 0, 0);",
+    "  setSpritePalette(0, 1, 34, 0, 0);",
+    "  clearHero.x = 120;",
+    "  clearHero.y = 120;",
+    "  playTone(0, 36, 20);",
+    "}",
+    "",
+    "function update() {",
+    "  drawSprite(0, clearHero.x, clearHero.y, 0, 0);",
+    "  if (btn.start_just_pressed) { gotoScene(Title); }",
+    "}",
+  ].join("\n");
+
+  place(project, "Hero", 40, 180, "Main");
+  place(project, "Goomba", 160, 180, "Main");
+  place(project, "Coin", 100, 140, "Main");
+  place(project, "Ground", 0, 188, "Main");
   return project;
 }
 
@@ -397,9 +471,28 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
   );
   addSound(project, "Jump", 0, 30, 5, "se");
   addSound(project, "Goal", 0, 40, 20, "se");
-  addSound(project, "StageBgm", 2, 24, 30, "bgm");
+  addLoopBgm(project, "StageBgm");
 
-  mainScene(project).legacyCode = [
+  const title = mainScene(project);
+  title.name = "Title";
+  title.legacyCode = [
+    "instance titleMario: Mario;",
+    "",
+    "function init() {",
+    "  setPalette(0, 1, 33, 0, 0);",
+    "  setSpritePalette(0, 1, 34, 0, 0);",
+    "  titleMario.x = 120;",
+    "  titleMario.y = 140;",
+    "}",
+    "",
+    "function update() {",
+    "  drawSprite(0, titleMario.x, titleMario.y, 0, 0);",
+    "  if (btn.start_just_pressed) { gotoScene(Main); }",
+    "}",
+  ].join("\n");
+
+  const main = addScene(project, "Main");
+  main.legacyCode = [
     "instance mario: Mario;",
     "instance block: Block;",
     "instance flag: Flag;",
@@ -408,29 +501,39 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
     "  setPalette(0, 1, 33, 0, 0);",
     "  setSpritePalette(0, 1, 34, 0, 0);",
     "  setSpritePalette(1, 1, 16, 0, 0);",
+    "  mario.x = 40;",
+    "  mario.y = 180;",
+    "  playSound(StageBgm);",
     "}",
     "",
     "function update() {",
     "  Mario.move(mario);",
     "  Block.move(block);",
     "  Flag.move(flag);",
-    "  if (mario.x > 210) {",
-    "    mario.x = 40;",
-    "    mario.stage += 1;",
-    "    block.x = 100;",
-    "    if (mario.stage > 2) { block.x = 140; }",
-    "    playTone(0, 40, 20);",
-    "  }",
+    dslHitBox("mario", "flag", 16, ["playSound(Goal);", "gotoScene(Clear);"]),
     "}",
   ].join("\n");
 
-  // stage field is used in scene but must exist on Mario — hero kit doesn't include stage
-  const mario = project.characters[project.characterOrder.find((id) => project.characters[id]?.name === "Mario")!]!;
-  mario.legacyCode = `field stage = 1;\n${mario.legacyCode}`;
+  const clear = addScene(project, "Clear");
+  clear.legacyCode = [
+    "instance clearMario: Mario;",
+    "",
+    "function init() {",
+    "  setPalette(0, 1, 33, 0, 0);",
+    "  setSpritePalette(0, 1, 34, 0, 0);",
+    "  clearMario.x = 120;",
+    "  clearMario.y = 120;",
+    "}",
+    "",
+    "function update() {",
+    "  drawSprite(0, clearMario.x, clearMario.y, 0, 0);",
+    "  if (btn.start_just_pressed) { gotoScene(Title); }",
+    "}",
+  ].join("\n");
 
-  place(project, "Mario", 40, 180);
-  place(project, "Block", 120, 180);
-  place(project, "Flag", 220, 160);
+  place(project, "Mario", 40, 180, "Main");
+  place(project, "Block", 120, 180, "Main");
+  place(project, "Flag", 220, 160, "Main");
   return project;
 }
 

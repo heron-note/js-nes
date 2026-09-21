@@ -796,7 +796,7 @@ export function mountCreateExplorer(
             <option value="bgm"${snd.kind === "bgm" ? " selected" : ""}>BGM（メロディ）</option>
           </select>
         </label>
-        <p class="muted">時間軸にノートを置いて作ります。コードからは <code>playSound(${escapeHtml(snd.name)})</code>。BGM は長めのシーケンス、SE は短い音向けの整理ラベルです（再生 API は共通）。</p>
+        <p class="muted">時間軸にノートを置いて作ります。コードからは <code>playSound(${escapeHtml(snd.name)})</code>。<strong>BGM</strong> はシーケンス終端でループ再生、<strong>SE</strong> は1回再生です。</p>
         <div id="v3-snd-piano"></div>
         <button type="button" id="v3-delete" class="danger">削除</button>
       `;

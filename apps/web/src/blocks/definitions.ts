@@ -238,6 +238,38 @@ export function defineFamiJsBlocks(): void {
       },
     },
 
+    fjs_call_gotoscene: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("シーンへ移動 gotoScene")
+          .appendField(new Blockly.FieldTextInput("Main"), "NAME");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_CALLS);
+        this.setTooltip("gotoScene(シーン名); 指定シーンの init を呼び、以降その update が毎フレーム動く");
+      },
+    },
+
+    fjs_on_overlap: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("重なったら")
+          .appendField(new Blockly.FieldTextInput("hero"), "A")
+          .appendField("と")
+          .appendField(new Blockly.FieldTextInput("enemy"), "B")
+          .appendField("（判定サイズ")
+          .appendField(new Blockly.FieldNumber(16, 1, 64, 1), "SIZE")
+          .appendField("）");
+        this.appendStatementInput("DO").appendField("する");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_CONTROL);
+        this.setTooltip(
+          "矩形近接判定。両インスタンスに x/y と作業用 hx/hy、A 側に hit フィールドが必要",
+        );
+      },
+    },
+
     fjs_number: {
       init(this: Blockly.Block) {
         this.appendDummyInput().appendField(new Blockly.FieldNumber(0, 0, 255, 1), "VALUE");

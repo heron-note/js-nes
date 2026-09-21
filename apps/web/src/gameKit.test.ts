@@ -27,11 +27,17 @@ describe("gameKit", () => {
     expect(hero.legacyCode).toContain("facing");
     expect(v3.bitmaps[hero.bitmapId]!.tileWidth).toBe(4);
     expect(Object.values(v3.sounds).some((s) => s.kind === "se")).toBe(true);
+    expect(v3.sceneOrder.length).toBe(3);
+    expect(Object.values(v3.sounds).some((s) => s.kind === "bgm" && s.events && s.events.length > 0)).toBe(
+      true,
+    );
 
     const v2 = projectV3ToV2(v3);
+    const { sequences } = buildProjectSequences(v2);
+    expect(sequences.some((s) => s.loop)).toBe(true);
     const { rom } = compile(buildProjectSource(v2), {
       ...buildProjectAssets(v2),
-      sequences: buildProjectSequences(v2).sequences,
+      sequences,
       mapperId: 0,
     });
     const nes = new Nes();

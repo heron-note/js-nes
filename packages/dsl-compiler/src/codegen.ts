@@ -85,6 +85,8 @@ export class CodegenError extends Error {}
 export interface SoundSequenceDef {
   /** ソート済みイベント（t, channel, note, duration）最大 32 */
   events: Array<{ t: number; channel: number; note: number; duration: number }>;
+  /** true なら終端後に先頭へ戻して再生を続ける（BGM 用） */
+  loop?: boolean;
 }
 
 export interface GenerateOptions {
@@ -155,11 +157,12 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
         "part/sceneを使用する場合、トップレベルの function init/update は使用できません（sceneのinit/updateを使ってください）",
       );
     }
-    if (program.scenes.length !== 1) {
+    if (program.scenes.length < 1) {
       throw new CodegenError(
-        `sceneはちょうど1つ定義する必要があります（現在: ${program.scenes.length}個）。複数シーンの切り替えは未対応です`,
+        `sceneは1つ以上定義する必要があります（現在: ${program.scenes.length}個）`,
       );
     }
+    builtins.gotoScene = { label: "goto_scene", arity: 1 };
   }
 
   const zp = new Map<string, number>();
@@ -178,22 +181,29 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   }
 
   // --- v1（シーン/パーツ構成モデル）専用: インスタンス配置とRAM(SoA)アロケーション ---
-  const scene = isV1 ? program.scenes[0]! : null;
+  // 全シーンの instance を合算して確保する（アクティブな1シーンだけが毎フレーム動く）。
+  const scenes = isV1 ? program.scenes : [];
   const instanceInfo = new Map<string, { partType: string; index: number }>();
   const partInstanceCount = new Map<string, number>();
   const partFieldAddr = new Map<string, number>(); // key: `${partType}.${fieldName}` -> RAM先頭アドレス
+  /** 現在のアクティブシーン番号（gotoScene / update 分岐用）。シーケンス領域の直後。 */
+  const ACTIVE_SCENE = 0x07e5;
 
-  if (isV1 && scene) {
-    for (const inst of scene.instances) {
-      if (instanceInfo.has(inst.name)) {
-        throw new CodegenError(`${inst.line}行目: インスタンス名 '${inst.name}' が重複しています`);
+  if (isV1 && scenes.length > 0) {
+    for (const scene of scenes) {
+      for (const inst of scene.instances) {
+        if (instanceInfo.has(inst.name)) {
+          throw new CodegenError(
+            `${inst.line}行目: インスタンス名 '${inst.name}' が重複しています（シーンをまたいでも一意にしてください）`,
+          );
+        }
+        if (!program.parts.some((p) => p.name === inst.partType)) {
+          throw new CodegenError(`${inst.line}行目: 未知のパーツ種別 '${inst.partType}' が参照されています`);
+        }
+        const count = partInstanceCount.get(inst.partType) ?? 0;
+        instanceInfo.set(inst.name, { partType: inst.partType, index: count });
+        partInstanceCount.set(inst.partType, count + 1);
       }
-      if (!program.parts.some((p) => p.name === inst.partType)) {
-        throw new CodegenError(`${inst.line}行目: 未知のパーツ種別 '${inst.partType}' が参照されています`);
-      }
-      const count = partInstanceCount.get(inst.partType) ?? 0;
-      instanceInfo.set(inst.name, { partType: inst.partType, index: count });
-      partInstanceCount.set(inst.partType, count + 1);
     }
 
     let ramAddr = PART_RAM_START;
@@ -880,6 +890,8 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
     const SEQ_ACTIVE = 0x07e0;
     const SEQ_FRAME = 0x07e1;
     const SEQ_LEFT = 0x07e2;
+    const SEQ_ID = 0x07e3;
+    const SEQ_LOOP = 0x07e4;
 
     e.label("seq_tick");
     e.LDA_ABS(SEQ_ACTIVE);
@@ -917,6 +929,12 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
     e.INC_ABS(SEQ_FRAME);
     e.RTS();
     e.label("seq_tick_finish");
+    e.LDA_ABS(SEQ_LOOP);
+    e.BEQ("seq_tick_stop");
+    e.LDA_ABS(SEQ_ID);
+    e.STA_ZP(ARG_BASE + 0);
+    e.JMP("play_sequence");
+    e.label("seq_tick_stop");
     e.LDA_IMM(0);
     e.STA_ABS(SEQ_ACTIVE);
     e.label("seq_tick_done");
@@ -924,6 +942,7 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
 
     e.label("play_sequence");
     e.LDA_ZP(ARG_BASE + 0);
+    e.STA_ABS(SEQ_ID);
     e.ASL_ACC();
     e.TAX();
     e.LDA_ABS_X_LABEL("seq_ptrs");
@@ -931,6 +950,9 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
     e.INX();
     e.LDA_ABS_X_LABEL("seq_ptrs");
     e.STA_ZP(SEQ_PTR + 1);
+    e.LDX_ZP(ARG_BASE + 0);
+    e.LDA_ABS_X_LABEL("seq_loop_flags");
+    e.STA_ABS(SEQ_LOOP);
     e.LDY_IMM(0);
     e.LDA_IND_Y(SEQ_PTR);
     e.STA_ABS(SEQ_LEFT);
@@ -974,6 +996,8 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
     for (let i = 0; i < sequences.length; i++) {
       e.DW_LABEL(`seq_data_${i}`);
     }
+    e.label("seq_loop_flags");
+    e.DB(...sequences.map((s) => (s.loop ? 1 : 0)));
   }
 
   // --- ユーザー関数 ---
@@ -990,17 +1014,55 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
       }
     }
 
-    const sceneInitFn = scene!.functions.find((f) => f.name === "init");
-    const sceneUpdateFn = scene!.functions.find((f) => f.name === "update");
-    if (!sceneInitFn) throw new CodegenError(`scene '${scene!.name}' に init() 関数が見つかりません（必須です）`);
-    if (!sceneUpdateFn) throw new CodegenError(`scene '${scene!.name}' に update() 関数が見つかりません（必須です）`);
+    for (let si = 0; si < scenes.length; si++) {
+      const sc = scenes[si]!;
+      const sceneInitFn = sc.functions.find((f) => f.name === "init");
+      const sceneUpdateFn = sc.functions.find((f) => f.name === "update");
+      if (!sceneInitFn) {
+        throw new CodegenError(`scene '${sc.name}' に init() 関数が見つかりません（必須です）`);
+      }
+      if (!sceneUpdateFn) {
+        throw new CodegenError(`scene '${sc.name}' に update() 関数が見つかりません（必須です）`);
+      }
 
+      e.label(`scene_init_${si}`);
+      for (const s of sceneInitFn.body) genPartStmt(s, { selfPartType: null });
+      e.RTS();
+
+      e.label(`scene_update_${si}`);
+      for (const s of sceneUpdateFn.body) genPartStmt(s, { selfPartType: null });
+      e.RTS();
+    }
+
+    e.label("goto_scene");
+    e.LDA_ZP(ARG_BASE + 0);
+    e.STA_ABS(ACTIVE_SCENE);
+    for (let si = 0; si < scenes.length; si++) {
+      e.LDA_ABS(ACTIVE_SCENE);
+      e.CMP_IMM(si);
+      e.BNE(`goto_scene_skip_${si}`);
+      e.JSR(`scene_init_${si}`);
+      e.RTS();
+      e.label(`goto_scene_skip_${si}`);
+    }
+    e.RTS();
+
+    // 起動時は先頭シーン（宣言順0）をアクティブにして init する
     e.label("init_user");
-    for (const s of sceneInitFn.body) genPartStmt(s, { selfPartType: null });
+    e.LDA_IMM(0);
+    e.STA_ABS(ACTIVE_SCENE);
+    e.JSR("scene_init_0");
     e.RTS();
 
     e.label("update_user");
-    for (const s of sceneUpdateFn.body) genPartStmt(s, { selfPartType: null });
+    for (let si = 0; si < scenes.length; si++) {
+      e.LDA_ABS(ACTIVE_SCENE);
+      e.CMP_IMM(si);
+      e.BNE(`update_user_skip_${si}`);
+      e.JSR(`scene_update_${si}`);
+      e.RTS();
+      e.label(`update_user_skip_${si}`);
+    }
     e.RTS();
   } else {
     e.label("init_user");

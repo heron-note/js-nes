@@ -180,7 +180,7 @@ export const SCENE_TOOLBOX = {
       kind: "category",
       name: "条件分岐",
       colour: "260",
-      contents: [{ kind: "block", type: "fjs_if" }],
+      contents: [{ kind: "block", type: "fjs_if" }, { kind: "block", type: "fjs_on_overlap" }],
     },
     {
       kind: "category",
@@ -196,6 +196,7 @@ export const SCENE_TOOLBOX = {
         { kind: "block", type: "fjs_call_setpalette" },
         { kind: "block", type: "fjs_call_setspritepalette" },
         { kind: "block", type: "fjs_call_playtone" },
+        { kind: "block", type: "fjs_call_gotoscene" },
       ],
     },
     {

@@ -3,6 +3,7 @@
  * 生成したテキストは既存の dsl-compiler（compile()）にそのまま渡す。
  */
 import * as Blockly from "blockly/core";
+import { dslHitBox } from "../gameKit.js";
 
 const ORDER_ATOMIC = 0;
 
@@ -130,6 +131,24 @@ forBlock["fjs_call_playtone"] = (block) => {
   const note = block.getFieldValue("NOTE") as number;
   const duration = block.getFieldValue("DURATION") as number;
   return `playTone(${channel}, ${note}, ${duration});\n`;
+};
+
+forBlock["fjs_call_gotoscene"] = (block) => {
+  const name = block.getFieldValue("NAME") as string;
+  return `gotoScene(${name});\n`;
+};
+
+forBlock["fjs_on_overlap"] = (block) => {
+  const a = block.getFieldValue("A") as string;
+  const b = block.getFieldValue("B") as string;
+  const size = Number(block.getFieldValue("SIZE") ?? 16);
+  const body = famijsGenerator.statementToCode(block, "DO");
+  const thenLines = body
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0)
+    .map((l) => (l.endsWith(";") ? l : `${l};`));
+  return `${dslHitBox(a, b, size, thenLines)}\n`;
 };
 
 forBlock["fjs_number"] = (block): [string, number] => {

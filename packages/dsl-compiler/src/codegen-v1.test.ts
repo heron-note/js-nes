@@ -204,7 +204,7 @@ describe("DSL v1（part/scene）Phase 2: Pong相当ソースのコンパイル�
     expect(() => compile(source)).toThrow(CodegenError);
   });
 
-  it("sceneが0個または2個以上だとCodegenErrorになる", () => {
+  it("sceneが0個だとCodegenError、2個以上はコンパイルできる", () => {
     const zeroScenes = `part Foo { field x = 0; behavior noop(self) {} }`;
     expect(() => compile(zeroScenes)).toThrow(CodegenError);
 
@@ -213,6 +213,40 @@ describe("DSL v1（part/scene）Phase 2: Pong相当ソースのコンパイル�
       scene A { instance f: Foo; function init() {} function update() {} }
       scene B { instance g: Foo; function init() {} function update() {} }
     `;
-    expect(() => compile(twoScenes)).toThrow(CodegenError);
+    expect(() => compile(twoScenes)).not.toThrow();
+  });
+
+  it("gotoScene でアクティブシーンが切り替わる", () => {
+    const source = `
+      part Marker {
+        field x = 10;
+        behavior move(self) {
+          drawSprite(0, self.x, 100, 0, 0);
+        }
+      }
+      scene Title {
+        instance t: Marker;
+        function init() { t.x = 10; }
+        function update() {
+          if (btn.start_just_pressed) { gotoScene(1); }
+          Marker.move(t);
+        }
+      }
+      scene Main {
+        instance m: Marker;
+        function init() { m.x = 200; }
+        function update() { Marker.move(m); }
+      }
+    `;
+    const { rom } = compile(source);
+    const nes = new Nes();
+    nes.loadRom(rom);
+    for (let i = 0; i < 3; i++) nes.runFrame();
+    expect(nes.readCpuMemory(0x07e5)).toBe(0); // ACTIVE_SCENE = Title
+    nes.controller1.setButton(BUTTON.START, true);
+    nes.runFrame();
+    nes.controller1.setButton(BUTTON.START, false);
+    for (let i = 0; i < 2; i++) nes.runFrame();
+    expect(nes.readCpuMemory(0x07e5)).toBe(1); // Main
   });
 });
