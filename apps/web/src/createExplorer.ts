@@ -16,6 +16,11 @@ import {
   type ScenePlacement,
 } from "./projectV3.js";
 import { mountBitmapEditor, type BitmapEditorHandle } from "./bitmapEditorV3.js";
+import {
+  createHorizontalMirrorBitmap,
+  syncBitmapMirrors,
+  unlinkMirrorsOf,
+} from "./bitmapMirror.js";
 import { nesIndexToCss } from "./bitmapRaster.js";
 import { DEFAULT_BITMAP_TILES } from "./bitmapSizePresets.js";
 import {
@@ -230,7 +235,11 @@ export function mountCreateExplorer(
     type FolderKey = "palettes" | "bitmaps" | "characters" | "sounds" | "scenes";
     const folderDefs: { key: FolderKey; label: string; order: string[]; nameOf: (id: string) => string }[] = [
       { key: "palettes", label: "パレット", order: project.paletteOrder, nameOf: (id) => project.palettes[id]?.name ?? id },
-      { key: "bitmaps", label: "ビットマップ", order: project.bitmapOrder, nameOf: (id) => project.bitmaps[id]?.name ?? id },
+      { key: "bitmaps", label: "ビットマップ", order: project.bitmapOrder, nameOf: (id) => {
+        const b = project.bitmaps[id];
+        if (!b) return id;
+        return b.mirrorOfId ? `${b.name} ⇄` : b.name;
+      } },
       {
         key: "characters",
         label: "キャラクター",
@@ -589,6 +598,13 @@ export function mountCreateExplorer(
         return;
       }
       const pal = project.palettes[bmp.paletteId];
+      const sourceBmp = bmp.mirrorOfId ? project.bitmaps[bmp.mirrorOfId] : undefined;
+      const mirrorChildId = project.bitmapOrder.find((id) => project.bitmaps[id]?.mirrorOfId === bmp.id);
+      const mirrorNote = sourceBmp
+        ? `<p class="ok">「${escapeHtml(sourceBmp.name)}」の左右ミラーです。どちらかを描くと、もう一方も自動で反転同期されます。</p>`
+        : mirrorChildId
+          ? `<p class="muted">左右ミラー「${escapeHtml(project.bitmaps[mirrorChildId]?.name ?? "")}」とリンク中。編集内容はミラー側へ同期されます。</p>`
+          : `<p class="muted">左右向き用に、この絵の左右反転コピーをリンク作成できます。</p>`;
       editor.innerHTML = `
         <h2>ビットマップ</h2>
         <label class="create-field">名前
@@ -597,6 +613,28 @@ export function mountCreateExplorer(
         <label class="create-field">パレット
           <select id="v3-bmp-pal">${paletteOptions(project, bmp.paletteId)}</select>
         </label>
+        <div class="bmp-mirror-box">
+          <h3>左右ミラー</h3>
+          ${mirrorNote}
+          <div class="create-wizard-actions">
+            ${
+              !bmp.mirrorOfId && !mirrorChildId
+                ? `<button type="button" id="v3-bmp-make-mirror">左右ミラーを作成</button>`
+                : ""
+            }
+            ${
+              bmp.mirrorOfId
+                ? `<button type="button" id="v3-bmp-goto-source" class="secondary">元のビットマップを開く</button>
+                   <button type="button" id="v3-bmp-unlink-mirror" class="secondary">ミラーリンクを解除</button>`
+                : ""
+            }
+            ${
+              mirrorChildId
+                ? `<button type="button" id="v3-bmp-goto-mirror" class="secondary">ミラーを開く</button>`
+                : ""
+            }
+          </div>
+        </div>
         <div id="v3-bmp-editor-host"></div>
         <button type="button" id="v3-delete" class="danger">削除</button>
       `;
@@ -606,9 +644,36 @@ export function mountCreateExplorer(
       });
       editor.querySelector<HTMLSelectElement>("#v3-bmp-pal")!.addEventListener("change", (e) => {
         bmp.paletteId = (e.target as HTMLSelectElement).value;
+        syncBitmapMirrors(project, bmp.id);
         commit();
       });
       editor.querySelector("#v3-delete")!.addEventListener("click", () => deleteBitmap(bmp.id));
+      editor.querySelector("#v3-bmp-make-mirror")?.addEventListener("click", () => {
+        try {
+          const id = createHorizontalMirrorBitmap(project, bmp.id);
+          selection = { kind: "bitmap", id };
+          commit();
+        } catch (err: unknown) {
+          window.alert(err instanceof Error ? err.message : String(err));
+        }
+      });
+      editor.querySelector("#v3-bmp-goto-source")?.addEventListener("click", () => {
+        if (!bmp.mirrorOfId) return;
+        selection = { kind: "bitmap", id: bmp.mirrorOfId };
+        renderTree();
+        renderEditor();
+      });
+      editor.querySelector("#v3-bmp-goto-mirror")?.addEventListener("click", () => {
+        if (!mirrorChildId) return;
+        selection = { kind: "bitmap", id: mirrorChildId };
+        renderTree();
+        renderEditor();
+      });
+      editor.querySelector("#v3-bmp-unlink-mirror")?.addEventListener("click", () => {
+        delete bmp.mirrorOfId;
+        delete bmp.mirrorAxis;
+        commit();
+      });
 
       const host = editor.querySelector<HTMLElement>("#v3-bmp-editor-host")!;
       if (pal) {
@@ -616,8 +681,14 @@ export function mountCreateExplorer(
           getBitmap: () => bmp,
           getPalette: () => project.palettes[bmp.paletteId] ?? pal,
           resolvePaletteFromImport: (colors, nameHint) => findOrCreatePalette(project, colors, nameHint),
-          onChange: () => softCommit(),
-          onPaletteChange: () => softCommit(),
+          onChange: () => {
+            syncBitmapMirrors(project, bmp.id);
+            softCommit();
+          },
+          onPaletteChange: () => {
+            syncBitmapMirrors(project, bmp.id);
+            softCommit();
+          },
         });
       } else {
         host.innerHTML = `<p class="muted">パレットが見つかりません。先にパレットを選んでください。</p>`;
@@ -910,6 +981,7 @@ export function mountCreateExplorer(
       window.alert("このビットマップを背景に使っているシーンがあるため削除できません");
       return;
     }
+    unlinkMirrorsOf(project, id);
     delete project.bitmaps[id];
     project.bitmapOrder = project.bitmapOrder.filter((x) => x !== id);
     selection = { kind: "folder", folder: "bitmaps" };

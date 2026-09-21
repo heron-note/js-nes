@@ -401,12 +401,21 @@ h1 .subtitle {
   color: var(--muted);
 }
 
-.create-wizard-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-  flex-wrap: wrap;
-  align-items: center;
+.bmp-mirror-box {
+  margin: 10px 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.bmp-mirror-box h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+.bmp-mirror-box .ok {
+  color: #8fd19a;
 }
 
 .create-file-label {

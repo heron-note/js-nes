@@ -50,6 +50,13 @@ export interface BitmapAsset {
    * ビルド時の使用判定・再取り込みスキップに使う。
    */
   providedSource?: string;
+  /**
+   * 左右（など）ミラーのソース bitmap id。
+   * 設定されている資産はツールがソースと水平反転で同期する。
+   */
+  mirrorOfId?: string;
+  /** ミラー軸。当面 horizontal のみ。 */
+  mirrorAxis?: "horizontal";
 }
 
 export interface CharacterAsset {
@@ -256,6 +263,12 @@ function validateBitmap(value: unknown, id: string): BitmapAsset {
   if (typeof b.providedSource === "string" && b.providedSource.length > 0) {
     out.providedSource = b.providedSource;
   }
+  if (typeof b.mirrorOfId === "string" && b.mirrorOfId.length > 0) {
+    out.mirrorOfId = b.mirrorOfId;
+  }
+  if (b.mirrorAxis === "horizontal") {
+    out.mirrorAxis = "horizontal";
+  }
   return out;
 }
 
@@ -400,6 +413,18 @@ export function validateProjectV3(data: unknown): ProjectV3 {
   for (const bmp of Object.values(bitmaps)) {
     if (!palettes[bmp.paletteId]) {
       throw new ProjectV3FormatError(`bitmap ${bmp.id} の paletteId ${bmp.paletteId} が存在しません`);
+    }
+    if (bmp.mirrorOfId) {
+      const src = bitmaps[bmp.mirrorOfId];
+      if (!src) {
+        throw new ProjectV3FormatError(`bitmap ${bmp.id} の mirrorOfId ${bmp.mirrorOfId} が存在しません`);
+      }
+      if (src.mirrorOfId) {
+        throw new ProjectV3FormatError(`bitmap ${bmp.id} のミラー元がさらにミラーです（1段のみ）`);
+      }
+      if (bmp.mirrorOfId === bmp.id) {
+        throw new ProjectV3FormatError(`bitmap ${bmp.id} は自分自身をミラー元にできません`);
+      }
     }
   }
   for (const ch of Object.values(characters)) {
