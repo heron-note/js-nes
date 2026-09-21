@@ -80,6 +80,8 @@ export interface SoundAsset {
   channel: 0 | 1 | 2 | 3;
   note: number;
   duration: number;
+  /** BGM（ループ想定のメロディ）か SE（単発効果音）。再生経路は共通、編集・整理用。 */
+  kind?: "bgm" | "se";
   /** シーケンス全長（フレーム）。省略時は単発 or events から推定。 */
   lengthFrames?: number;
   /** ピアノロール／メロディ。あれば playSound 時にシーケンス再生。 */
@@ -306,6 +308,9 @@ function validateSound(value: unknown, id: string): SoundAsset {
   const note = assertIntInRange(s.note, 0, 255, `sounds.${id}.note`);
   const duration = assertIntInRange(s.duration, 0, 255, `sounds.${id}.duration`);
   const out: SoundAsset = { id, name: s.name, channel: s.channel, note, duration };
+  if (s.kind === "bgm" || s.kind === "se") {
+    out.kind = s.kind;
+  }
   if (typeof s.lengthFrames === "number") {
     out.lengthFrames = assertIntInRange(s.lengthFrames, 1, 255, `sounds.${id}.lengthFrames`);
   }

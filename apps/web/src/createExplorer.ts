@@ -246,7 +246,12 @@ export function mountCreateExplorer(
         order: project.characterOrder,
         nameOf: (id) => project.characters[id]?.name ?? id,
       },
-      { key: "sounds", label: "音", order: project.soundOrder, nameOf: (id) => project.sounds[id]?.name ?? id },
+      { key: "sounds", label: "音", order: project.soundOrder, nameOf: (id) => {
+        const s = project.sounds[id];
+        if (!s) return id;
+        const tag = s.kind === "bgm" ? "BGM" : "SE";
+        return `${s.name} [${tag}]`;
+      } },
       { key: "scenes", label: "シーン", order: project.sceneOrder, nameOf: (id) => project.scenes[id]?.name ?? id },
     ];
 
@@ -778,19 +783,31 @@ export function mountCreateExplorer(
         editor.innerHTML = `<p class="muted">音が見つかりません</p>`;
         return;
       }
+      if (!snd.kind) snd.kind = "se";
       if (!snd.lengthFrames) snd.lengthFrames = defaultLengthFrames();
       editor.innerHTML = `
         <h2>音（ピアノロール）</h2>
         <label class="create-field">名前
           <input type="text" id="v3-snd-name" value="${escapeAttr(snd.name)}" />
         </label>
-        <p class="muted">単音ではなく、時間軸にノートを置いてメロディ／SE を作ります。コードからは <code>playSound(${escapeHtml(snd.name)})</code> で再生できます。</p>
+        <label class="create-field">種類
+          <select id="v3-snd-kind">
+            <option value="se"${snd.kind === "se" ? " selected" : ""}>効果音 (SE)</option>
+            <option value="bgm"${snd.kind === "bgm" ? " selected" : ""}>BGM（メロディ）</option>
+          </select>
+        </label>
+        <p class="muted">時間軸にノートを置いて作ります。コードからは <code>playSound(${escapeHtml(snd.name)})</code>。BGM は長めのシーケンス、SE は短い音向けの整理ラベルです（再生 API は共通）。</p>
         <div id="v3-snd-piano"></div>
         <button type="button" id="v3-delete" class="danger">削除</button>
       `;
       editor.querySelector<HTMLInputElement>("#v3-snd-name")!.addEventListener("change", (e) => {
         snd.name = (e.target as HTMLInputElement).value;
         commit();
+      });
+      editor.querySelector<HTMLSelectElement>("#v3-snd-kind")!.addEventListener("change", (e) => {
+        const v = (e.target as HTMLSelectElement).value;
+        snd.kind = v === "bgm" ? "bgm" : "se";
+        softCommit();
       });
       editor.querySelector("#v3-delete")!.addEventListener("click", () => deleteSound(snd.id));
       const pianoHost = editor.querySelector<HTMLElement>("#v3-snd-piano")!;
@@ -943,6 +960,7 @@ export function mountCreateExplorer(
         channel: 0,
         note: 24,
         duration: 8,
+        kind: "se",
         lengthFrames: defaultLengthFrames(),
         events: [{ t: 0, channel: 0, note: 24, duration: 8 }],
       };

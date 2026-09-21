@@ -21,6 +21,7 @@ import {
   type SoundAsset,
 } from "./projectV3.js";
 import { paintTile, type TilePattern } from "./templateGraphics.js";
+import { dslHeroPlatformerMove, dslHitBox, paintHeroWalkSheet } from "./gameKit.js";
 
 export type CreateTemplateId =
   | "empty"
@@ -55,13 +56,13 @@ export const CREATE_TEMPLATES: CreateTemplateInfo[] = [
   {
     id: "platformer",
     title: "プラットフォーマー（旧マリオ風）",
-    blurb: "左右移動＋A でジャンプ、床に着地、敵の往復。コイン取得の骨組み付き。",
+    blurb: "左右移動＋B ダッシュ＋A ジャンプ、2ポーズ歩行、床・敵・コイン。敵接触で一時無敵。",
     badge: "横アクション",
   },
   {
     id: "side_scroll",
     title: "横スクロール＋ゴール（SMB 風）",
-    blurb: "右へ進んで旗に触れるとステージ進行（同一シーン内で座標リセット）。障害物あり。",
+    blurb: "ダッシュ／ジャンプで右へ進み、旗でステージ進行。歩行アニメ付き。",
     badge: "横スクロール",
   },
   {
@@ -105,6 +106,15 @@ function addBitmap(project: ProjectV3, name: string, pattern: TilePattern): stri
   return bmp.id;
 }
 
+function addHeroBitmap(project: ProjectV3, name: string): string {
+  const palId = project.paletteOrder[0]!;
+  const bmp = createEmptyBitmap(palId, { name, tileWidth: 4, tileHeight: 1 });
+  paintHeroWalkSheet(bmp.pixels);
+  project.bitmaps[bmp.id] = bmp;
+  project.bitmapOrder.push(bmp.id);
+  return bmp.id;
+}
+
 function addCharacter(project: ProjectV3, name: string, bitmapId: string, code: string): CharacterAsset {
   const palId = project.paletteOrder[0]!;
   const id = newAssetId("chr");
@@ -120,9 +130,10 @@ function addSound(
   channel: 0 | 1 | 2 | 3,
   note: number,
   duration: number,
+  kind: "bgm" | "se" = "se",
 ): SoundAsset {
   const id = newAssetId("snd");
-  const s: SoundAsset = { id, name, channel, note, duration };
+  const s: SoundAsset = { id, name, channel, note, duration, kind };
   project.sounds[id] = s;
   project.soundOrder.push(id);
   return s;
@@ -160,8 +171,8 @@ function seedStarterBlocks(project: ProjectV3): void {
 }
 
 /**
- * 粗い X 近接ヒット（幅 16）。body は1回だけ実行（分岐距離対策）。
- * a に field hit / hx、b に field hx が必要。
+ * 粗い X 近接（幅 16）。分岐が長いシーン向け。
+ * a に hit/hx、b に hx が必要。
  */
 function hitNearX(a: string, b: string, thenLines: string[]): string {
   const body = thenLines.map((l) => `    ${l}`).join("\n");
@@ -255,33 +266,7 @@ function buildStarter(opts: BuildOpts): ProjectV3 {
 function buildPlatformer(opts: BuildOpts): ProjectV3 {
   const project = createEmptyProjectV3(opts.mapperId ?? 0);
   project.title = opts.title ?? "プラットフォーマー";
-  addCharacter(
-    project,
-    "Hero",
-    addBitmap(project, "Hero", "player"),
-    [
-      "field x = 40;",
-      "field y = 180;",
-      "field onGround = 1;",
-      "field jumpLeft = 0;",
-      "field hx = 0;",
-      "field hy = 0;",
-      "field hit = 0;",
-      "",
-      "behavior move(self) {",
-      "  if (btn.right) { self.x += 2; }",
-      "  if (btn.left) { self.x -= 2; }",
-      "  if (btn.a_just_pressed) {",
-      "    if (self.onGround) { self.jumpLeft = 10; self.onGround = 0; playTone(0, 28, 6); }",
-      "  }",
-      "  if (self.jumpLeft > 0) { self.y -= 3; self.jumpLeft -= 1; } else { self.y += 2; }",
-      "  if (self.y > 180) { self.y = 180; self.onGround = 1; }",
-      "  if (self.x < 8) { self.x = 8; }",
-      "  if (self.x > 240) { self.x = 240; }",
-      "  drawSprite(0, self.x, self.y, 0, 0);",
-      "}",
-    ].join("\n"),
-  );
+  addCharacter(project, "Hero", addHeroBitmap(project, "Hero"), dslHeroPlatformerMove({ groundY: 180, spriteId: 0 }));
   addCharacter(
     project,
     "Goomba",
@@ -290,6 +275,8 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
       "field x = 160;",
       "field y = 180;",
       "field goingRight = 0;",
+      "field hx = 0;",
+      "field hy = 0;",
       "",
       "behavior move(self) {",
       "  if (self.goingRight) { self.x += 1; } else { self.x -= 1; }",
@@ -335,8 +322,9 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
       "}",
     ].join("\n"),
   );
-  addSound(project, "Jump", 0, 28, 6);
-  addSound(project, "CoinGet", 0, 36, 8);
+  addSound(project, "Jump", 0, 28, 6, "se");
+  addSound(project, "CoinGet", 0, 36, 8, "se");
+  addSound(project, "Hurt", 1, 12, 10, "se");
 
   mainScene(project).legacyCode = [
     "instance hero: Hero;",
@@ -356,7 +344,14 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
     "  Coin.move(coin);",
     "  Ground.move(ground);",
     "  if (coin.taken) { } else {",
-    hitNearX("hero", "coin", ["coin.taken = 1;", "playTone(0, 36, 8);"]),
+    dslHitBox("hero", "coin", 16, ["coin.taken = 1;", "playTone(0, 36, 8);"]),
+    "  }",
+    "  if (hero.hurt) { } else {",
+    dslHitBox("hero", "goomba", 16, [
+      "hero.hurt = 45;",
+      "hero.x = 40;",
+      "playTone(1, 12, 10);",
+    ]),
     "  }",
     "}",
   ].join("\n");
@@ -371,30 +366,7 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
 function buildSideScroll(opts: BuildOpts): ProjectV3 {
   const project = createEmptyProjectV3(opts.mapperId ?? 0);
   project.title = opts.title ?? "横スクロール＋ゴール";
-  addCharacter(
-    project,
-    "Mario",
-    addBitmap(project, "Mario", "player"),
-    [
-      "field x = 40;",
-      "field y = 180;",
-      "field stage = 1;",
-      "field onGround = 1;",
-      "field jumpLeft = 0;",
-      "",
-      "behavior move(self) {",
-      "  if (btn.right) { self.x += 2; }",
-      "  if (btn.left) { self.x -= 2; }",
-      "  if (btn.a_just_pressed) {",
-      "    if (self.onGround) { self.jumpLeft = 10; self.onGround = 0; playTone(0, 30, 5); }",
-      "  }",
-      "  if (self.jumpLeft > 0) { self.y -= 3; self.jumpLeft -= 1; } else { self.y += 2; }",
-      "  if (self.y > 180) { self.y = 180; self.onGround = 1; }",
-      "  if (self.x < 16) { self.x = 16; }",
-      "  drawSprite(0, self.x, self.y, 0, 0);",
-      "}",
-    ].join("\n"),
-  );
+  addCharacter(project, "Mario", addHeroBitmap(project, "Mario"), dslHeroPlatformerMove({ groundY: 180, spriteId: 0 }));
   addCharacter(
     project,
     "Block",
@@ -415,14 +387,17 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
     [
       "field x = 220;",
       "field y = 160;",
+      "field hx = 0;",
+      "field hy = 0;",
       "",
       "behavior move(self) {",
       "  drawSprite(3, self.x, self.y, 0, 0);",
       "}",
     ].join("\n"),
   );
-  addSound(project, "Jump", 0, 30, 5);
-  addSound(project, "Goal", 0, 40, 20);
+  addSound(project, "Jump", 0, 30, 5, "se");
+  addSound(project, "Goal", 0, 40, 20, "se");
+  addSound(project, "StageBgm", 2, 24, 30, "bgm");
 
   mainScene(project).legacyCode = [
     "instance mario: Mario;",
@@ -448,6 +423,10 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
     "  }",
     "}",
   ].join("\n");
+
+  // stage field is used in scene but must exist on Mario — hero kit doesn't include stage
+  const mario = project.characters[project.characterOrder.find((id) => project.characters[id]?.name === "Mario")!]!;
+  mario.legacyCode = `field stage = 1;\n${mario.legacyCode}`;
 
   place(project, "Mario", 40, 180);
   place(project, "Block", 120, 180);
