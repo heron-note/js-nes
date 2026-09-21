@@ -31,6 +31,17 @@ describe("packINesRom", () => {
     expect(() => packINesRom(new Uint8Array(100), new Uint8Array(0x2000))).toThrow(RomPackError);
   });
 
+  it("writes mapper id into flags6/7", () => {
+    const rom = packINesRom(new Uint8Array(0x8000), new Uint8Array(0x2000), { mapperId: 2 });
+    expect(((rom[6] ?? 0) >> 4) | ((rom[7] ?? 0) & 0xf0)).toBe(2);
+  });
+
+  it("accepts CHR-ROM size 0 (CHR-RAM)", () => {
+    const rom = packINesRom(new Uint8Array(0x4000), new Uint8Array(0), { mapperId: 2 });
+    expect(rom[5]).toBe(0);
+    expect(rom.length).toBe(16 + 0x4000);
+  });
+
   it("throws RomPackError for an invalid CHR-ROM size", () => {
     expect(() => packINesRom(new Uint8Array(0x4000), new Uint8Array(100))).toThrow(RomPackError);
   });

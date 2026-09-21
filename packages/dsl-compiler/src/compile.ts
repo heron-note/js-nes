@@ -1,6 +1,6 @@
 import { parse } from "./parser.js";
 import { generate } from "./codegen.js";
-import { packChrRom } from "@js-nes/rom-builder";
+import { expandPrgForMapper, isSupportedMapperId, packChrRom, packINesRom } from "@js-nes/rom-builder";
 
 export interface CompileAssets {
   /**
@@ -13,12 +13,15 @@ export interface CompileAssets {
   partTiles?: Record<string, ArrayLike<number>[]>;
   /** playSequence(id) 用。id は配列インデックス。 */
   sequences?: import("./codegen.js").SoundSequenceDef[];
+  /** Create / エミュ対応マッパー。省略時 0（NROM）。 */
+  mapperId?: number;
+  mirroring?: "horizontal" | "vertical";
 }
 
 export interface CompileResult {
-  /** 完成した .nes ファイルのバイト列（Mapper 0 固定） */
+  /** 完成した .nes ファイルのバイト列 */
   rom: Uint8Array;
-  /** PRG-ROM部分のみ（デバッグ・テスト用） */
+  /** PRG-ROM部分のみ（マッパー用に拡張済み、デバッグ・テスト用） */
   prgRom: Uint8Array;
 }
 
@@ -29,6 +32,11 @@ export interface CompileResult {
  * プレースホルダーとして出力される（PRG-ROM側の検証のみが目的の場合の簡便な使い方）。
  */
 export function compile(source: string, assets: CompileAssets = {}): CompileResult {
+  const mapperId = assets.mapperId ?? 0;
+  if (!isSupportedMapperId(mapperId)) {
+    throw new Error(`Mapper ${mapperId} は未対応です（対応: 0,1,2,3,4,7,30）`);
+  }
+
   const program = parse(source);
 
   const tileOffsets = new Map<string, number>();
@@ -42,21 +50,18 @@ export function compile(source: string, assets: CompileAssets = {}): CompileResu
     }
   }
 
-  const prgRom = generate(program, { tileOffsets, sequences: assets.sequences ?? [] });
-
+  const prg16k = generate(program, {
+    tileOffsets,
+    sequences: assets.sequences ?? [],
+    mapperId,
+  });
+  const prgRom = expandPrgForMapper(prg16k, mapperId);
   const chrRom = tiles.length > 0 ? packChrRom(tiles) : new Uint8Array(0x2000);
 
-  const header = new Uint8Array(16);
-  header.set([0x4e, 0x45, 0x53, 0x1a], 0); // "NES\x1A"
-  header[4] = 1; // PRG-ROM: 16KB x1
-  header[5] = 1; // CHR-ROM: 8KB x1
-  header[6] = 0; // horizontal mirroring, mapper 0
-  header[7] = 0;
-
-  const rom = new Uint8Array(header.length + prgRom.length + chrRom.length);
-  rom.set(header, 0);
-  rom.set(prgRom, header.length);
-  rom.set(chrRom, header.length + prgRom.length);
+  const rom = packINesRom(prgRom, chrRom, {
+    mapperId,
+    mirroring: assets.mirroring ?? "horizontal",
+  });
 
   return { rom, prgRom };
 }

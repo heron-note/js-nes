@@ -34,9 +34,10 @@ describe("projectV3ToV2", () => {
     expect(v2.scenes[0]?.name).toBe("Main");
   });
 
-  it("rejects non-NROM build", () => {
-    const v3 = migrateProjectV2toV3(sampleV2, 1);
-    expect(() => projectV3ToV2(v3)).toThrow(ProjectV3BuildError);
+  it("allows non-NROM build conversion", () => {
+    const v3 = migrateProjectV2toV3(sampleV2, 4);
+    const v2 = projectV3ToV2(v3);
+    expect(v2.parts[0]?.name).toBe("Player");
   });
 
   it("rejects CHR over 256 tiles", () => {

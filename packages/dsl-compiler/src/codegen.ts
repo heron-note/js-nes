@@ -97,10 +97,52 @@ export interface GenerateOptions {
   tileOffsets?: ReadonlyMap<string, number>;
   /** playSequence(id) 用テーブル（id は配列インデックス） */
   sequences?: SoundSequenceDef[];
+  /**
+   * Create ビルド先マッパー。MMC1/MMC3 は起動時にバンク／ミラーを NROM 相当へ揃える初期化を埋め込む。
+   */
+  mapperId?: number;
+}
+
+function emitMmc1Control(e: Emitter, value: number): void {
+  // シリアル書き込みをリセットしてから LSB 先に 5 bit
+  e.LDA_IMM(0x80);
+  e.STA_ABS(0x8000);
+  for (let i = 0; i < 5; i++) {
+    e.LDA_IMM((value >> i) & 1);
+    e.STA_ABS(0x8000);
+  }
+}
+
+function emitMapperBoot(e: Emitter, mapperId: number): void {
+  if (mapperId === 1) {
+    // horizontal + PRG mode 3 + CHR 8KB（電源時 single-screen を上書き）
+    emitMmc1Control(e, 0x0e);
+    return;
+  }
+  if (mapperId === 4) {
+    // CHR を 8KB 線形、PRG を R6=0 / R7=1、ミラー horizontal
+    const chrRegs = [0, 2, 4, 5, 6, 7];
+    for (let r = 0; r < chrRegs.length; r++) {
+      e.LDA_IMM(r);
+      e.STA_ABS(0x8000);
+      e.LDA_IMM(chrRegs[r]!);
+      e.STA_ABS(0x8001);
+    }
+    e.LDA_IMM(6);
+    e.STA_ABS(0x8000);
+    e.LDA_IMM(0);
+    e.STA_ABS(0x8001);
+    e.LDA_IMM(7);
+    e.STA_ABS(0x8000);
+    e.LDA_IMM(1);
+    e.STA_ABS(0x8001);
+    e.LDA_IMM(1);
+    e.STA_ABS(0xa000);
+  }
 }
 
 export function generate(program: Program, options: GenerateOptions = {}): Uint8Array {
-  const { tileOffsets, sequences = [] } = options;
+  const { tileOffsets, sequences = [], mapperId = 0 } = options;
   const isV1 = program.parts.length > 0 || program.scenes.length > 0;
   const builtins: Record<string, BuiltinDef> = { ...BUILTINS };
   if (sequences.length > 0) {
@@ -555,6 +597,11 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   }
 
   // --- reset ルーチン ---
+  const needsMapperBoot = mapperId === 1 || mapperId === 4;
+  if (needsMapperBoot) {
+    e.label("boot");
+    emitMapperBoot(e, mapperId);
+  }
   e.label("reset");
   e.SEI();
   e.CLD();
@@ -972,7 +1019,7 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
 
   const prgRom = new Uint8Array(0x4000);
   prgRom.set(bytes, 0);
-  const resetAddr = labels.get("reset")!;
+  const resetAddr = labels.get(needsMapperBoot ? "boot" : "reset")!;
   const nmiAddr = labels.get("nmi_handler")!;
   prgRom[0x3ffa] = nmiAddr & 0xff;
   prgRom[0x3ffb] = (nmiAddr >> 8) & 0xff;

@@ -294,7 +294,7 @@ export function mountCreateExplorer(
       const caps = listMapperCapabilities();
       editor.innerHTML = `
         <h2>新規プロジェクト</h2>
-        <p class="muted">テンプレートでジャンルの骨組みを選び、マッパーを決めて作成します。ビルドは当面 NROM(0) のみです。</p>
+        <p class="muted">テンプレートでジャンルの骨組みを選び、マッパーを決めて作成します。エミュ対応マッパーはすべてビルドできます。</p>
         <label class="create-field">タイトル
           <input type="text" id="wiz-title" value="新規プロジェクト" />
         </label>
@@ -385,7 +385,7 @@ export function mountCreateExplorer(
           <p class="${cap.buildSupported ? "ok" : "warn"}">${
             cap.buildSupported
               ? "このマッパーは Create から .nes ビルドできます。"
-              : "このマッパーはまだ Create ビルド未対応です（NROM 以外は準備中）。"
+              : "このマッパーはまだ Create ビルド未対応です。"
           }</p>
         </div>
         <p class="muted">バージョン: v${project.version}</p>
@@ -402,12 +402,12 @@ export function mountCreateExplorer(
         <p class="muted">
           シーンから参照中: ビットマップ ${used.bitmapIds.size} / パレット ${used.paletteIds.size} /
           キャラ ${used.characterIds.size}。CHR 候補: ${buildBmps.length} 枚 /
-          タイル約 ${estimateTiles(project)} / 256（NROM）。
+          タイル約 ${estimateTiles(project)} / 256。
           取り込んだだけの未使用フォントはバイナリに入りません。
         </p>
         <div class="create-wizard-actions">
           <button type="button" id="v3-build-btn">ビルド&amp;実行</button>
-          <span class="muted">NROM(0) のみ。結果は左プレビューへ。</span>
+          <span class="muted">選択中マッパー ${cap.id} — ${escapeHtml(cap.name)}。結果は左プレビューへ。</span>
         </div>
         <h3>プロジェクトファイル</h3>
         <div class="create-wizard-actions">

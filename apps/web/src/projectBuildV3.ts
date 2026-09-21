@@ -61,13 +61,16 @@ function sceneCodeFromPlacements(v3: ProjectV3, sceneId: string): string {
 
 /**
  * v3 を v2 に落として既存ビルド経路へ渡す。
- * mapperId !== 0 はビルド未対応としてエラー。
+ * マッパーは compile() 側へ別途渡す（v2 Project には mapperId を持たない）。
  */
 export function projectV3ToV2(v3: ProjectV3): Project {
   const cap = MAPPER_CAPABILITIES[v3.mapperId];
-  if (!cap?.buildSupported) {
+  if (!cap) {
+    throw new ProjectV3BuildError(`未知のマッパー ${v3.mapperId} です`);
+  }
+  if (!cap.buildSupported) {
     throw new ProjectV3BuildError(
-      `マッパー ${v3.mapperId}（${cap?.name ?? "?"}）はまだ Create ビルド未対応です。NROM(0) を選んでください。`,
+      `マッパー ${v3.mapperId}（${cap.name}）はまだ Create ビルド未対応です。`,
     );
   }
 

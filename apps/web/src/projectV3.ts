@@ -14,8 +14,8 @@ import { validateToneEvent, type ToneEvent } from "./soundSequence.js";
 
 export const PROJECT_V3_VERSION = 3 as const;
 
-/** エミュ対応済みマッパー（Create で選択可）。 */
-export const CREATE_MAPPER_IDS = [0, 1, 2, 3, 4, 7] as const;
+/** エミュ対応済みマッパー（Create で選択・ビルド可）。 */
+export const CREATE_MAPPER_IDS = [0, 1, 2, 3, 4, 7, 30] as const;
 export type CreateMapperId = (typeof CREATE_MAPPER_IDS)[number];
 
 export const CREATE_MAPPER_LABELS: Record<CreateMapperId, string> = {
@@ -25,6 +25,7 @@ export const CREATE_MAPPER_LABELS: Record<CreateMapperId, string> = {
   3: "3 — CNROM",
   4: "4 — MMC3",
   7: "7 — AxROM",
+  30: "30 — UNROM 512",
 };
 
 export type NesColorIndex = number; // 0–63

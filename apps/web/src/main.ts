@@ -629,7 +629,8 @@ function buildAndRun(): void {
     buildSourcePreview!.value = source;
     const assets = buildProjectAssets(project);
     const { sequences } = buildProjectSequences(project);
-    const { rom } = compile(source, { ...assets, sequences });
+    const mapperId = createExplorerHandle?.getProject().mapperId ?? 0;
+    const { rom } = compile(source, { ...assets, sequences, mapperId });
     loadRomInWorker(rom, "build");
     lastBuiltRom = rom;
     downloadBtn!.disabled = false;
