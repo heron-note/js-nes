@@ -122,7 +122,7 @@ function addBitmap(project: ProjectV3, name: string, pattern: TilePattern): stri
 
 function addHeroBitmap(project: ProjectV3, name: string): string {
   const palId = project.paletteOrder[0]!;
-  const bmp = createEmptyBitmap(palId, { name, tileWidth: 4, tileHeight: 1 });
+  const bmp = createEmptyBitmap(palId, { name, tileWidth: 2, tileHeight: 1 });
   paintHeroWalkSheet(bmp.pixels);
   project.bitmaps[bmp.id] = bmp;
   project.bitmapOrder.push(bmp.id);
@@ -171,6 +171,16 @@ function place(project: ProjectV3, characterName: string, x: number, y: number, 
   if (!chId) return;
   const sc = sceneByName(project, sceneName) ?? mainScene(project);
   sc.placements.push({ id: newAssetId("plc"), characterId: chId, x, y });
+}
+
+/** シーンの soundIds にプロジェクト内の全音を紐づける（参照グラフ用）。 */
+function attachAllSoundsToScenes(project: ProjectV3): void {
+  const ids = [...project.soundOrder];
+  for (const sid of project.sceneOrder) {
+    const sc = project.scenes[sid];
+    if (!sc) continue;
+    sc.soundIds = [...ids];
+  }
 }
 
 function seedStarterBlocks(project: ProjectV3): void {
@@ -929,28 +939,39 @@ function buildChase(opts: BuildOpts): ProjectV3 {
 
 /** テンプレート ID から ProjectV3 を生成する。 */
 export function buildTemplateProjectV3(id: CreateTemplateId, opts: BuildOpts = {}): ProjectV3 {
+  let project: ProjectV3;
   switch (id) {
     case "empty":
-      return buildEmpty(opts);
+      project = buildEmpty(opts);
+      break;
     case "starter":
-      return buildStarter(opts);
+      project = buildStarter(opts);
+      break;
     case "platformer":
-      return buildPlatformer(opts);
+      project = buildPlatformer(opts);
+      break;
     case "side_scroll":
-      return buildSideScroll(opts);
+      project = buildSideScroll(opts);
+      break;
     case "shmup":
-      return buildShmup(opts);
+      project = buildShmup(opts);
+      break;
     case "fighter":
-      return buildFighter(opts);
+      project = buildFighter(opts);
+      break;
     case "rpg":
-      return buildRpg(opts);
+      project = buildRpg(opts);
+      break;
     case "chase":
-      return buildChase(opts);
+      project = buildChase(opts);
+      break;
     default: {
       const _exhaustive: never = id;
       return _exhaustive;
     }
   }
+  attachAllSoundsToScenes(project);
+  return project;
 }
 
 export function isCreateTemplateId(value: string): value is CreateTemplateId {

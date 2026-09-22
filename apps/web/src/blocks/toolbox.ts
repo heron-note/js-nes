@@ -139,7 +139,10 @@ export const PART_TOOLBOX = {
         { kind: "block", type: "fjs_call_setpalette" },
         { kind: "block", type: "fjs_call_setspritepalette" },
         { kind: "block", type: "fjs_call_drawsprite" },
+        { kind: "block", type: "fjs_call_drawspriteflip" },
         { kind: "block", type: "fjs_call_playtone" },
+        { kind: "block", type: "fjs_call_playsound" },
+        { kind: "block", type: "fjs_call_stopsound" },
       ],
     },
     {
@@ -196,6 +199,8 @@ export const SCENE_TOOLBOX = {
         { kind: "block", type: "fjs_call_setpalette" },
         { kind: "block", type: "fjs_call_setspritepalette" },
         { kind: "block", type: "fjs_call_playtone" },
+        { kind: "block", type: "fjs_call_playsound" },
+        { kind: "block", type: "fjs_call_stopsound" },
         { kind: "block", type: "fjs_call_gotoscene" },
         { kind: "block", type: "fjs_call_fillbackground" },
         { kind: "block", type: "fjs_call_setscroll" },
@@ -208,6 +213,7 @@ export const SCENE_TOOLBOX = {
       colour: "0",
       contents: [
         { kind: "block", type: "fjs_number" },
+        { kind: "block", type: "fjs_instance_field_get" },
         { kind: "block", type: "fjs_compare_expr" },
       ],
     },

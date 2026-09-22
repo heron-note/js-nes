@@ -1,9 +1,10 @@
 /**
- * ProjectV3 → 既存 dsl-compiler 向け v2 Project への変換（当面 Mapper 0 ビルド用）。
+ * ProjectV3 → 既存 dsl-compiler 向け v2 Project への変換。
  */
 import type { Project, ProjectPart, ProjectScene, ProjectSound } from "./project.js";
 import type { BitmapAsset, ProjectV3 } from "./projectV3.js";
 import { MAPPER_CAPABILITIES } from "./mapperCapabilities.js";
+import { buildBackgroundTilesFromV3 } from "./projectBackground.js";
 
 export class ProjectV3BuildError extends Error {}
 
@@ -28,6 +29,10 @@ export function dslIdent(name: string, fallback: string): string {
   return fallback;
 }
 
+function sceneUsesBackgroundApi(code: string): boolean {
+  return /fillBackground\s*\(|setScroll\s*\(|drawBgTile\s*\(/.test(code);
+}
+
 function sceneCodeFromPlacements(v3: ProjectV3, sceneId: string): string {
   const sc = v3.scenes[sceneId];
   if (!sc || sc.placements.length === 0) return "";
@@ -40,8 +45,10 @@ function sceneCodeFromPlacements(v3: ProjectV3, sceneId: string): string {
   if (firstPal) {
     const [c0, c1, c2, c3] = firstPal.colors;
     initLines.push(`  setPalette(0, ${c0}, ${c1}, ${c2}, ${c3});`);
-    initLines.push(`  setSpritePalette(0, ${c0}, ${c1}, ${c2}, ${c3});`);
   }
+
+  const paletteSlots = new Map<string, number>();
+  let nextSlot = 0;
 
   sc.placements.forEach((pl, i) => {
     const ch = v3.characters[pl.characterId];
@@ -50,13 +57,32 @@ function sceneCodeFromPlacements(v3: ProjectV3, sceneId: string): string {
     const instName = dslIdent(`p${i}_${ch.name}`, `inst${i}`);
     lines.push(`instance ${instName}: ${partName};`);
     calls.push(`  ${partName}.move(${instName});`);
-    // 配置座標を初期値として書く（field がある前提。無ければ実行時無視されうる）
-    initLines.push(`  // placement ${instName} @ ${pl.x},${pl.y}`);
+
+    const palId = ch.paletteId || firstPalId;
+    if (palId && v3.palettes[palId]) {
+      let slot = paletteSlots.get(palId);
+      if (slot === undefined && nextSlot < 4) {
+        slot = nextSlot++;
+        paletteSlots.set(palId, slot);
+        const [c0, c1, c2, c3] = v3.palettes[palId]!.colors;
+        initLines.push(`  setSpritePalette(${slot}, ${c0}, ${c1}, ${c2}, ${c3});`);
+      }
+    }
+
+    // 配置座標をフィールドへ（x/y がある前提）
+    initLines.push(`  ${instName}.x = ${pl.x & 0xff};`);
+    initLines.push(`  ${instName}.y = ${pl.y & 0xff};`);
   });
+
+  if (sc.backgroundBitmapId) {
+    initLines.push("  fillBackground(1);");
+    initLines.push("  setScroll(0, 0);");
+  }
+
   if (lines.length === 0) return "";
   const initBlock =
     initLines.length > 0 ? `\nfunction init() {\n${initLines.join("\n")}\n}\n` : "";
-  return `${lines.join("\n")}\n${initBlock}\nupdate() {\n${calls.join("\n")}\n}\n`;
+  return `${lines.join("\n")}\n${initBlock}\nfunction update() {\n${calls.join("\n")}\n}\n`;
 }
 
 /**
@@ -87,10 +113,16 @@ export function projectV3ToV2(v3: ProjectV3): Project {
     return part;
   });
 
-  const totalTiles = parts.reduce((n, p) => n + p.tiles.length, 0);
+  const bgTiles = buildBackgroundTilesFromV3(v3);
+  const codeMentionsBg = v3.sceneOrder.some((id) =>
+    sceneUsesBackgroundApi(v3.scenes[id]?.legacyCode ?? ""),
+  );
+  const hasBgBitmap = v3.sceneOrder.some((id) => !!v3.scenes[id]?.backgroundBitmapId);
+  const bgOverhead = hasBgBitmap || codeMentionsBg || bgTiles.length > 0 ? 1 + bgTiles.length : 0;
+  const totalTiles = parts.reduce((n, p) => n + p.tiles.length, 0) + bgOverhead;
   if (totalTiles > 256) {
     throw new ProjectV3BuildError(
-      `CHR タイル数が ${totalTiles} 枚で NROM 上限（256）を超えています。ビットマップを減らすか小さくしてください。`,
+      `CHR タイル数が ${totalTiles} 枚で NROM 上限（256）を超えています（背景 ${bgOverhead} + パーツ ${totalTiles - bgOverhead}）。ビットマップを減らすか小さくしてください。`,
     );
   }
 

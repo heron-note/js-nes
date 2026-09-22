@@ -8,11 +8,11 @@ import { buildBackgroundTilesFromV3 } from "./projectBackground.js";
 import { projectV3ToV2 } from "./projectBuildV3.js";
 
 describe("gameKit", () => {
-  it("ヒーロー歩行シートは 4 タイル分ある", () => {
-    const pixels = new Array(256).fill(0);
+  it("ヒーロー歩行シートは 2 タイル分ある", () => {
+    const pixels = new Array(128).fill(0);
     paintHeroWalkSheet(pixels);
     expect(pixels.some((p, i) => i < 64 && p > 0)).toBe(true);
-    expect(pixels.some((p, i) => i >= 192 && p > 0)).toBe(true);
+    expect(pixels.some((p, i) => i >= 64 && i < 128 && p > 0)).toBe(true);
   });
 
   it("dslHitBox は X と Y の両方を見る", () => {
@@ -26,7 +26,7 @@ describe("gameKit", () => {
     const hero = Object.values(v3.characters).find((c) => c.name === "Hero")!;
     expect(hero.legacyCode).toContain("btn.b");
     expect(hero.legacyCode).toContain("facing");
-    expect(v3.bitmaps[hero.bitmapId]!.tileWidth).toBe(4);
+    expect(v3.bitmaps[hero.bitmapId]!.tileWidth).toBe(2);
     expect(Object.values(v3.sounds).some((s) => s.kind === "se")).toBe(true);
     expect(v3.sceneOrder.length).toBe(3);
     expect(Object.values(v3.sounds).some((s) => s.kind === "bgm" && s.events && s.events.length > 0)).toBe(

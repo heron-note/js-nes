@@ -77,6 +77,8 @@ const BUILTINS: Record<string, BuiltinDef> = {
   setPalette: { label: "set_palette", arity: 5 },
   setSpritePalette: { label: "set_sprite_palette", arity: 5 },
   drawSprite: { label: "draw_sprite", arity: 5 },
+  /** flags: 下位2bit=パレット, その上2bit=反転(0なし/1左右/2上下/3両方) */
+  drawSpriteFlip: { label: "draw_sprite_flip", arity: 5 },
   playTone: { label: "play_tone", arity: 3 },
 };
 
@@ -154,6 +156,7 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   const builtins: Record<string, BuiltinDef> = { ...BUILTINS };
   if (sequences.length > 0) {
     builtins.playSequence = { label: "play_sequence", arity: 1 };
+    builtins.stopSequence = { label: "stop_sequence", arity: 0 };
   }
   if (enableBackground) {
     builtins.fillBackground = { label: "fill_background", arity: 1 };
@@ -403,7 +406,8 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
     call.args.forEach((arg, i) => {
       // drawSprite(id, x, y, tile, palette) の tile(index=3) が数値リテラルの場合のみ、
       // behavior内であればそのパーツ種別のタイルオフセットを自動加算する（Phase 3: 資産リンク）。
-      const isDrawSpriteTileArg = call.callee === "drawSprite" && i === 3;
+      const isDrawSpriteTileArg =
+        (call.callee === "drawSprite" || call.callee === "drawSpriteFlip") && i === 3;
       if (isDrawSpriteTileArg && arg.kind === "num" && ctx.selfPartType && tileOffsets) {
         const offset = tileOffsets.get(ctx.selfPartType) ?? 0;
         const tile = arg.value + offset;
@@ -679,12 +683,7 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   // OAMシャドウ($0200-$02FF)を$FFで埋めておく。drawSprite()で使わなかったスプライト
   // （Y座標が0のまま）は画面上端に表示されてしまうため、Y=$FF（画面外）にして
   // 明示的にdrawSprite()されるまで非表示にする。
-  e.LDA_IMM(0xff);
-  e.LDX_IMM(0x00);
-  e.label("clear_oam_loop");
-  e.DEX();
-  e.STA_ABS_X(0x0200);
-  e.BNE("clear_oam_loop");
+  e.JSR("clear_oam");
 
   e.JSR("init_user");
   e.LDA_IMM(0b1000_0000); // PPUCTRL: NMI有効、ネームテーブル0
@@ -748,9 +747,18 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   e.BNE("read_controller1_loop");
   e.RTS();
 
+  // --- ランタイム: OAM クリア（起動時・シーン切替） ---
+  e.label("clear_oam");
+  e.LDA_IMM(0xff);
+  e.LDX_IMM(0x00);
+  e.label("clear_oam_loop");
+  e.DEX();
+  e.STA_ABS_X(0x0200);
+  e.BNE("clear_oam_loop");
+  e.RTS();
+
   // --- ランタイム: drawSprite(id, x, y, tile, palette) ---
   // OAMシャドウ($0200-$02FF)へ書き込み、NMIハンドラ末尾のOAM DMA($4014)でPPU側OAMへ反映される。
-  // 画面上へのスプライト描画（PPU側のOAM読み出し・合成）自体はM4で対応する。
   // palette（0-3）は属性バイトのbit0-1にそのまま入り、setSpritePalette()で設定した
   // 4つのスプライトパレットのどれを使うかを実機同様スプライトごとに選べる。
   e.label("draw_sprite");
@@ -766,6 +774,36 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   e.AND_IMM(0x03);
   e.STA_ABS_X(0x0202);
   e.LDA_ZP(ARG_BASE + 1); // x
+  e.STA_ABS_X(0x0203);
+  e.RTS();
+
+  // drawSpriteFlip(id, x, y, tile, flags)
+  // flags: bit0-1=palette, bit2-3=flip(0/1/2/3) → OAM attr bit6/7
+  e.label("draw_sprite_flip");
+  e.LDA_ZP(ARG_BASE + 0);
+  e.ASL_ACC();
+  e.ASL_ACC();
+  e.TAX();
+  e.LDA_ZP(ARG_BASE + 2);
+  e.STA_ABS_X(0x0200);
+  e.LDA_ZP(ARG_BASE + 3);
+  e.STA_ABS_X(0x0201);
+  e.LDA_ZP(ARG_BASE + 4);
+  e.LSR_ACC();
+  e.LSR_ACC();
+  e.AND_IMM(0x03); // flip
+  e.ASL_ACC();
+  e.ASL_ACC();
+  e.ASL_ACC();
+  e.ASL_ACC();
+  e.ASL_ACC();
+  e.ASL_ACC();
+  e.STA_ZP(ARG_BASE + 0);
+  e.LDA_ZP(ARG_BASE + 4);
+  e.AND_IMM(0x03); // palette
+  e.ORA_ZP(ARG_BASE + 0);
+  e.STA_ABS_X(0x0202);
+  e.LDA_ZP(ARG_BASE + 1);
   e.STA_ABS_X(0x0203);
   e.RTS();
 
@@ -1064,6 +1102,11 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
     e.LDA_IMM(1);
     e.STA_ABS(SEQ_ACTIVE);
     e.RTS();
+
+    e.label("stop_sequence");
+    e.LDA_IMM(0);
+    e.STA_ABS(SEQ_ACTIVE);
+    e.RTS();
   }
 
   // --- データ: 音階→APU周期テーブル（コンパイル時に生成、docs/03_DSL_SPEC.md参照） ---
@@ -1133,6 +1176,16 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
     e.label("goto_scene");
     e.LDA_ZP(ARG_BASE + 0);
     e.STA_ABS(ACTIVE_SCENE);
+    e.JSR("clear_oam");
+    if (sequences.length > 0) {
+      e.LDA_IMM(0);
+      e.STA_ABS(0x07e0); // SEQ_ACTIVE — 切替時に BGM を止める（新シーンで必要なら再生し直す）
+    }
+    if (enableBackground) {
+      e.LDA_IMM(0);
+      e.STA_ABS(SCROLL_X);
+      e.STA_ABS(SCROLL_Y);
+    }
     for (let si = 0; si < scenes.length; si++) {
       e.LDA_ABS(ACTIVE_SCENE);
       e.CMP_IMM(si);

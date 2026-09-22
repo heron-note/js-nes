@@ -128,6 +128,9 @@ export class Emitter {
   AND_IMM(v: number): this {
     return this.emit(0x29, v);
   }
+  ORA_IMM(v: number): this {
+    return this.emit(0x09, v);
+  }
 
   // --- zero page ---
   LDA_ZP(a: number): this {
@@ -144,6 +147,9 @@ export class Emitter {
   }
   AND_ZP(a: number): this {
     return this.emit(0x25, a);
+  }
+  ORA_ZP(a: number): this {
+    return this.emit(0x05, a);
   }
   EOR_ZP(a: number): this {
     return this.emit(0x45, a);

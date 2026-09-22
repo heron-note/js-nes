@@ -238,6 +238,54 @@ export function defineFamiJsBlocks(): void {
       },
     },
 
+    fjs_call_playsound: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("サウンド再生 playSound")
+          .appendField(new Blockly.FieldTextInput("Jump"), "NAME");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_CALLS);
+        this.setTooltip("playSound(名前); ビルド時に playTone / playSequence へ解決。BGM はループ");
+      },
+    },
+
+    fjs_call_stopsound: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput().appendField("シーケンス停止 stopSequence");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_CALLS);
+        this.setTooltip("stopSequence(); 再生中の BGM/シーケンスを止める");
+      },
+    },
+
+    fjs_call_drawspriteflip: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput().appendField("スプライト(反転) drawSpriteFlip ID").appendField(new Blockly.FieldNumber(0, 0, 63, 1), "ID");
+        this.appendValueInput("X").appendField("X");
+        this.appendValueInput("Y").appendField("Y");
+        this.appendDummyInput().appendField("タイル").appendField(new Blockly.FieldNumber(0, 0, 255, 1), "TILE");
+        this.appendDummyInput().appendField("パレット").appendField(new Blockly.FieldNumber(0, 0, 3, 1), "PALETTE");
+        this.appendDummyInput()
+          .appendField("反転")
+          .appendField(
+            new Blockly.FieldDropdown([
+              ["なし", "0"],
+              ["左右", "1"],
+              ["上下", "2"],
+              ["両方", "3"],
+            ]),
+            "FLIP",
+          );
+        this.setInputsInline(true);
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_CALLS);
+        this.setTooltip("drawSpriteFlip(id, x, y, tile, flags); flags=palette+(flip*4)");
+      },
+    },
+
     fjs_call_gotoscene: {
       init(this: Blockly.Block) {
         this.appendDummyInput()
@@ -264,15 +312,13 @@ export function defineFamiJsBlocks(): void {
 
     fjs_call_setscroll: {
       init(this: Blockly.Block) {
-        this.appendDummyInput()
-          .appendField("スクロール setScroll X")
-          .appendField(new Blockly.FieldNumber(0, 0, 255, 1), "X")
-          .appendField("Y")
-          .appendField(new Blockly.FieldNumber(0, 0, 255, 1), "Y");
+        this.appendValueInput("X").appendField("スクロール setScroll X");
+        this.appendValueInput("Y").appendField("Y");
+        this.setInputsInline(true);
         this.setPreviousStatement(true, null);
         this.setNextStatement(true, null);
         this.setColour(COLOR_CALLS);
-        this.setTooltip("setScroll(x, y); 背景のスクロール位置（毎フレーム NMI で反映）");
+        this.setTooltip("setScroll(x, y); 背景のスクロール位置（値ブロック可）");
       },
     },
 

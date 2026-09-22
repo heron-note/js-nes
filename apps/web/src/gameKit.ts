@@ -49,15 +49,17 @@ export function dslHitBox(
   ].join("\n");
 }
 
-/** 右向き立ち/歩き・左向き立ち/歩きの 4 タイル分を pixels に描く（tileW=4, tileH=1）。 */
+/**
+ * 右向き立ち/歩きの 2 タイル。左向きは drawSpriteFlip(..., 1) で水平反転。
+ * pixels は最低 128（tileW=2）。
+ */
 export function paintHeroWalkSheet(pixels: number[]): void {
-  if (pixels.length < 256) return;
-  for (let i = 0; i < 256; i++) pixels[i] = 0;
+  if (pixels.length < 128) return;
+  for (let i = 0; i < Math.min(pixels.length, 256); i++) pixels[i] = 0;
 
-  const paintFacing = (tileBase: number, mirror: boolean, legShift: boolean) => {
+  const paintPose = (tileBase: number, legShift: boolean) => {
     const put = (x: number, y: number, c: number) => {
-      const px = mirror ? 7 - x : x;
-      pixels[tileBase + y * 8 + px] = c;
+      pixels[tileBase + y * 8 + x] = c;
     };
     for (let x = 2; x <= 5; x++) put(x, 1, 3);
     for (let y = 2; y <= 5; y++) for (let x = 2; x <= 5; x++) put(x, y, 2);
@@ -71,15 +73,13 @@ export function paintHeroWalkSheet(pixels: number[]): void {
     }
   };
 
-  paintFacing(0, false, false); // 右・立ち
-  paintFacing(64, false, true); // 右・歩き
-  paintFacing(128, true, false); // 左・立ち
-  paintFacing(192, true, true); // 左・歩き
+  paintPose(0, false); // 立ち
+  paintPose(64, true); // 歩き
 }
 
 /**
  * 横移動＋Bダッシュ＋向き＋2ポーズ歩行＋Aジャンプのヒーロー behavior 断片。
- * drawSprite の tile は 0–3（右立/右歩/左立/左歩）。
+ * drawSpriteFlip の tile は 0–1（立/歩）、左向きは flip=1。
  */
 export function dslHeroPlatformerMove(opts?: {
   groundY?: number;
@@ -124,9 +124,9 @@ export function dslHeroPlatformerMove(opts?: {
     "  if (self.walk > 15) { self.walk = 0; }",
     "  if (self.facing) {",
     "    if (self.walk > 7) {",
-    `      drawSprite(${sid}, self.x, self.y, 3, 0);`,
+    `      drawSpriteFlip(${sid}, self.x, self.y, 1, 4);`,
     "    } else {",
-    `      drawSprite(${sid}, self.x, self.y, 2, 0);`,
+    `      drawSpriteFlip(${sid}, self.x, self.y, 0, 4);`,
     "    }",
     "  } else {",
     "    if (self.walk > 7) {",
@@ -136,5 +136,22 @@ export function dslHeroPlatformerMove(opts?: {
     "    }",
     "  }",
     "}",
+  ].join("\n");
+}
+
+/** カメラをインスタンス X に追従（背景スクロール）。 */
+export function dslFollowCamX(inst: string, y = 0): string {
+  return `  setScroll(${inst}.x, ${y});`;
+}
+
+/**
+ * 簡易床押し戻し（固定 Y の床）。solidY より下に落ちたら戻す。
+ * マップエンジンの代わりの最小マクロ。
+ */
+export function dslClampGround(inst: string, groundY: number): string {
+  return [
+    `  if (${inst}.y > ${groundY}) {`,
+    `    ${inst}.y = ${groundY};`,
+    `  }`,
   ].join("\n");
 }

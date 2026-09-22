@@ -133,6 +133,24 @@ forBlock["fjs_call_playtone"] = (block) => {
   return `playTone(${channel}, ${note}, ${duration});\n`;
 };
 
+forBlock["fjs_call_playsound"] = (block) => {
+  const name = block.getFieldValue("NAME") as string;
+  return `playSound(${name});\n`;
+};
+
+forBlock["fjs_call_stopsound"] = () => `stopSequence();\n`;
+
+forBlock["fjs_call_drawspriteflip"] = (block) => {
+  const id = block.getFieldValue("ID") as number;
+  const x = valueOf(block, "X", "0");
+  const y = valueOf(block, "Y", "0");
+  const tile = block.getFieldValue("TILE") as number;
+  const palette = Number(block.getFieldValue("PALETTE") ?? 0);
+  const flip = Number(block.getFieldValue("FLIP") ?? 0);
+  const flags = (palette & 3) + ((flip & 3) << 2);
+  return `drawSpriteFlip(${id}, ${x}, ${y}, ${tile}, ${flags});\n`;
+};
+
 forBlock["fjs_call_gotoscene"] = (block) => {
   const name = block.getFieldValue("NAME") as string;
   return `gotoScene(${name});\n`;
@@ -144,8 +162,8 @@ forBlock["fjs_call_fillbackground"] = (block) => {
 };
 
 forBlock["fjs_call_setscroll"] = (block) => {
-  const x = block.getFieldValue("X") as number;
-  const y = block.getFieldValue("Y") as number;
+  const x = valueOf(block, "X", "0");
+  const y = valueOf(block, "Y", "0");
   return `setScroll(${x}, ${y});\n`;
 };
 
