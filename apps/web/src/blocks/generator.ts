@@ -138,6 +138,24 @@ forBlock["fjs_call_gotoscene"] = (block) => {
   return `gotoScene(${name});\n`;
 };
 
+forBlock["fjs_call_fillbackground"] = (block) => {
+  const tile = block.getFieldValue("TILE") as number;
+  return `fillBackground(${tile});\n`;
+};
+
+forBlock["fjs_call_setscroll"] = (block) => {
+  const x = block.getFieldValue("X") as number;
+  const y = block.getFieldValue("Y") as number;
+  return `setScroll(${x}, ${y});\n`;
+};
+
+forBlock["fjs_call_drawbgtile"] = (block) => {
+  const tx = block.getFieldValue("TX") as number;
+  const ty = block.getFieldValue("TY") as number;
+  const tile = block.getFieldValue("TILE") as number;
+  return `drawBgTile(${tx}, ${ty}, ${tile});\n`;
+};
+
 forBlock["fjs_on_overlap"] = (block) => {
   const a = block.getFieldValue("A") as string;
   const b = block.getFieldValue("B") as string;

@@ -10,7 +10,8 @@ export type TilePattern =
   | "ground"
   | "goal"
   | "fighter"
-  | "dot";
+  | "dot"
+  | "sky";
 
 function put(pixels: number[], x: number, y: number, c: number): void {
   if (x >= 0 && x < 8 && y >= 0 && y < 8) pixels[y * 8 + x] = c;
@@ -84,6 +85,17 @@ export function paintTile(pixels: number[], pattern: TilePattern): void {
       put(pixels, 4, 3, 3);
       put(pixels, 3, 4, 3);
       put(pixels, 4, 4, 3);
+      break;
+    case "sky":
+      // スクロールが見えるよう横ストライプ
+      for (let x = 0; x <= 7; x++) {
+        put(pixels, x, 1, 1);
+        put(pixels, x, 5, 1);
+      }
+      put(pixels, 2, 2, 2);
+      put(pixels, 3, 2, 2);
+      put(pixels, 5, 6, 2);
+      put(pixels, 6, 6, 2);
       break;
   }
 }

@@ -103,6 +103,11 @@ export interface GenerateOptions {
    * Create ビルド先マッパー。MMC1/MMC3 は起動時にバンク／ミラーを NROM 相当へ揃える初期化を埋め込む。
    */
   mapperId?: number;
+  /**
+   * true なら背景ネームテーブル描画を有効化し、fillBackground/setScroll/drawBgTile ランタイムと
+   * NMI 末尾のスクロール再適用を埋め込む。CHR 先頭に空白タイルを置く前提（compile 側）。
+   */
+  enableBackground?: boolean;
 }
 
 function emitMmc1Control(e: Emitter, value: number): void {
@@ -144,12 +149,20 @@ function emitMapperBoot(e: Emitter, mapperId: number): void {
 }
 
 export function generate(program: Program, options: GenerateOptions = {}): Uint8Array {
-  const { tileOffsets, sequences = [], mapperId = 0 } = options;
+  const { tileOffsets, sequences = [], mapperId = 0, enableBackground = false } = options;
   const isV1 = program.parts.length > 0 || program.scenes.length > 0;
   const builtins: Record<string, BuiltinDef> = { ...BUILTINS };
   if (sequences.length > 0) {
     builtins.playSequence = { label: "play_sequence", arity: 1 };
   }
+  if (enableBackground) {
+    builtins.fillBackground = { label: "fill_background", arity: 1 };
+    builtins.setScroll = { label: "set_scroll", arity: 2 };
+    builtins.drawBgTile = { label: "draw_bg_tile", arity: 3 };
+  }
+  /** スクロール値（NMI で $2005 へ再書き込み）。シーケンス／シーン領域の直後。 */
+  const SCROLL_X = 0x07e6;
+  const SCROLL_Y = 0x07e7;
 
   if (isV1) {
     if (program.functions.length > 0) {
@@ -653,6 +666,16 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
     e.STA_ABS(0x07e0); // SEQ_ACTIVE クリア
   }
 
+  if (enableBackground) {
+    e.LDA_IMM(0);
+    e.STA_ABS(SCROLL_X);
+    e.STA_ABS(SCROLL_Y);
+    // ネームテーブル0をタイル0（空白）で塗り、属性も0に
+    e.LDA_IMM(0);
+    e.STA_ZP(ARG_BASE + 0);
+    e.JSR("fill_background");
+  }
+
   // OAMシャドウ($0200-$02FF)を$FFで埋めておく。drawSprite()で使わなかったスプライト
   // （Y座標が0のまま）は画面上端に表示されてしまうため、Y=$FF（画面外）にして
   // 明示的にdrawSprite()されるまで非表示にする。
@@ -664,14 +687,24 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   e.BNE("clear_oam_loop");
 
   e.JSR("init_user");
-  e.LDA_IMM(0b1000_0000); // PPUCTRL: NMI有効
+  e.LDA_IMM(0b1000_0000); // PPUCTRL: NMI有効、ネームテーブル0
   e.STA_ABS(0x2000);
-  // PPUMASK: スプライトのみ描画有効。v0のDSL/ブロックエディタには背景ネームテーブルを
-  // 編集する手段がなく、ネームテーブルはリセット時に全バイト0（＝タイル0）で初期化される。
-  // 背景描画を有効にすると、ユーザーがどのタイル番号に絵を描いても（ドット絵エディタは
-  // タイル0を初期選択状態にする）その絵が画面全体に敷き詰められて表示されてしまうため、
-  // 背景を編集できるようになるまでは背景描画自体を無効にしておく。
-  e.LDA_IMM(0b0001_0000);
+  // $2006/$2007 で v が汚れるため、描画有効化直前にスクロールを明示リセット
+  e.LDA_ABS(0x2002); // w リセット
+  if (enableBackground) {
+    e.LDA_ABS(SCROLL_X);
+    e.STA_ABS(0x2005);
+    e.LDA_ABS(SCROLL_Y);
+    e.STA_ABS(0x2005);
+    // PPUMASK: 背景＋スプライト（左端8pxも表示）
+    e.LDA_IMM(0b0001_1110);
+  } else {
+    e.LDA_IMM(0);
+    e.STA_ABS(0x2005);
+    e.STA_ABS(0x2005);
+    // PPUMASK: スプライトのみ（背景ネームテーブル未使用時の既定）
+    e.LDA_IMM(0b0001_0000);
+  }
   e.STA_ABS(0x2001);
   e.label("forever");
   e.JMP("forever");
@@ -689,6 +722,15 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   e.JSR("update_user");
   e.LDA_IMM(0x02); // OAMシャドウ($0200-$02FF)のページ番号
   e.STA_ABS(0x4014); // OAM DMA発火（drawSpriteの結果をPPU側OAMへ反映）
+  if (enableBackground) {
+    e.LDA_ABS(0x2002);
+    e.LDA_IMM(0b1000_0000);
+    e.STA_ABS(0x2000);
+    e.LDA_ABS(SCROLL_X);
+    e.STA_ABS(0x2005);
+    e.LDA_ABS(SCROLL_Y);
+    e.STA_ABS(0x2005);
+  }
   e.RTI();
 
   // --- ランタイム: 標準コントローラ読み取り ---
@@ -771,6 +813,60 @@ export function generate(program: Program, options: GenerateOptions = {}): Uint8
   e.LDA_ZP(ARG_BASE + 4);
   e.STA_ABS(0x2007);
   e.RTS();
+
+  // --- ランタイム: fillBackground(tile) / setScroll(x,y) / drawBgTile(tx,ty,tile) ---
+  // enableBackground 時のみ埋め込む（未使用なら PRG を食わない）。
+  if (enableBackground) {
+    // ネームテーブル0（$2000）の 1024 バイト（32x30 タイル + 属性64）を同一タイルで埋める
+    e.label("fill_background");
+    e.LDA_IMM(0x20);
+    e.STA_ABS(0x2006);
+    e.LDA_IMM(0x00);
+    e.STA_ABS(0x2006);
+    e.LDA_ZP(ARG_BASE + 0);
+    e.LDX_IMM(0x00);
+    e.label("fill_bg_outer");
+    e.LDY_IMM(0x00);
+    e.label("fill_bg_inner");
+    e.STA_ABS(0x2007);
+    e.DEY();
+    e.BNE("fill_bg_inner");
+    e.INX();
+    e.CPX_IMM(0x04);
+    e.BNE("fill_bg_outer");
+    e.RTS();
+
+    e.label("set_scroll");
+    e.LDA_ZP(ARG_BASE + 0);
+    e.STA_ABS(SCROLL_X);
+    e.LDA_ZP(ARG_BASE + 1);
+    e.STA_ABS(SCROLL_Y);
+    e.RTS();
+
+    // drawBgTile(tx, ty, tile): tx=0..31, ty=0..29 → PPUADDR = $2000 + ty*32 + tx
+    e.label("draw_bg_tile");
+    e.LDA_ZP(ARG_BASE + 1); // ty
+    e.ASL_ACC();
+    e.ASL_ACC();
+    e.ASL_ACC();
+    e.ASL_ACC();
+    e.ASL_ACC(); // ty * 32（下位）
+    e.CLC();
+    e.ADC_ZP(ARG_BASE + 0); // + tx
+    e.STA_ZP(ARG_BASE + 3); // lo scratch
+    e.LDA_ZP(ARG_BASE + 1);
+    e.LSR_ACC();
+    e.LSR_ACC();
+    e.LSR_ACC(); // ty >> 3 = high bits of ty*32
+    e.CLC();
+    e.ADC_IMM(0x20);
+    e.STA_ABS(0x2006);
+    e.LDA_ZP(ARG_BASE + 3);
+    e.STA_ABS(0x2006);
+    e.LDA_ZP(ARG_BASE + 2);
+    e.STA_ABS(0x2007);
+    e.RTS();
+  }
 
   // --- ランタイム: サウンド発音時間の管理（毎NMIで1回呼ばれる） ---
   // playTone()はハードウェアのレングスカウンタを使わず（halt/loopビットで自動減衰を無効化した上で）、

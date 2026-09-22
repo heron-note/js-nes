@@ -4,6 +4,7 @@ import { Nes } from "@js-nes/emulator-core";
 import { buildTemplateProjectV3 } from "./createTemplates.js";
 import { dslHitBox, paintHeroWalkSheet } from "./gameKit.js";
 import { buildProjectAssets, buildProjectSequences, buildProjectSource } from "./projectBuild.js";
+import { buildBackgroundTilesFromV3 } from "./projectBackground.js";
 import { projectV3ToV2 } from "./projectBuildV3.js";
 
 describe("gameKit", () => {
@@ -38,6 +39,7 @@ describe("gameKit", () => {
     const { rom } = compile(buildProjectSource(v2), {
       ...buildProjectAssets(v2),
       sequences,
+      backgroundTiles: buildBackgroundTilesFromV3(v3),
       mapperId: 0,
     });
     const nes = new Nes();

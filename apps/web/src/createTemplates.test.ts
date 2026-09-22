@@ -3,6 +3,7 @@ import { Nes, parseINes } from "@js-nes/emulator-core";
 import { describe, expect, it } from "vitest";
 import { CREATE_TEMPLATES, buildTemplateProjectV3 } from "./createTemplates.js";
 import { buildProjectAssets, buildProjectSequences, buildProjectSource } from "./projectBuild.js";
+import { buildBackgroundTilesFromV3 } from "./projectBackground.js";
 import { projectV3ToV2 } from "./projectBuildV3.js";
 
 describe("createTemplates", () => {
@@ -28,7 +29,13 @@ describe("createTemplates", () => {
       const source = buildProjectSource(v2);
       const assets = buildProjectAssets(v2);
       const { sequences } = buildProjectSequences(v2);
-      const { rom } = compile(source, { ...assets, sequences, mapperId: 0 });
+      const backgroundTiles = buildBackgroundTilesFromV3(v3);
+      const { rom } = compile(source, {
+        ...assets,
+        sequences,
+        mapperId: 0,
+        backgroundTiles,
+      });
       expect(rom.byteLength).toBeGreaterThan(16);
     });
   }
@@ -47,5 +54,15 @@ describe("createTemplates", () => {
       for (let i = 0; i < 6; i++) nes.runFrame();
       expect(nes.ppu.oam[0]).toBeLessThan(240);
     }
+  });
+
+  it("side_scroll は背景タイルと setScroll を含む", () => {
+    const v3 = buildTemplateProjectV3("side_scroll", { mapperId: 0 });
+    const bg = buildBackgroundTilesFromV3(v3);
+    expect(bg.length).toBeGreaterThan(0);
+    const v2 = projectV3ToV2(v3);
+    const source = buildProjectSource(v2);
+    expect(source).toContain("fillBackground");
+    expect(source).toContain("setScroll");
   });
 });

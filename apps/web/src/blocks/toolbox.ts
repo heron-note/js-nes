@@ -197,6 +197,9 @@ export const SCENE_TOOLBOX = {
         { kind: "block", type: "fjs_call_setspritepalette" },
         { kind: "block", type: "fjs_call_playtone" },
         { kind: "block", type: "fjs_call_gotoscene" },
+        { kind: "block", type: "fjs_call_fillbackground" },
+        { kind: "block", type: "fjs_call_setscroll" },
+        { kind: "block", type: "fjs_call_drawbgtile" },
       ],
     },
     {

@@ -45,6 +45,7 @@ import { projectV3ToV2, ProjectV3BuildError } from "./projectBuildV3.js";
 import { resolveRomFromFile } from "./romFromFile.js";
 import { fetchSampleRomBytes, loadSampleCatalog, type SampleRomEntry } from "./sampleRoms.js";
 import { buildProjectAssets, buildProjectSequences, buildProjectSource, ProjectBuildError } from "./projectBuild.js";
+import { buildBackgroundTilesFromV3 } from "./projectBackground.js";
 import {
   clearStoredToken,
   fetchGithubUser,
@@ -625,7 +626,16 @@ function buildAndRun(): void {
     const assets = buildProjectAssets(project);
     const { sequences } = buildProjectSequences(project);
     const mapperId = createExplorerHandle?.getProject().mapperId ?? 0;
-    const { rom } = compile(source, { ...assets, sequences, mapperId });
+    const backgroundTiles = createExplorerHandle
+      ? buildBackgroundTilesFromV3(createExplorerHandle.getProject())
+      : [];
+    const { rom } = compile(source, {
+      ...assets,
+      sequences,
+      mapperId,
+      backgroundTiles,
+      enableBackground: backgroundTiles.length > 0,
+    });
     loadRomInWorker(rom, "build");
     lastBuiltRom = rom;
     downloadBtn!.disabled = false;

@@ -851,6 +851,7 @@ export function mountCreateExplorer(
             ${bitmapOptions(project, sc.backgroundBitmapId ?? "")}
           </select>
         </label>
+        <p class="muted">背景に選ぶと CHR に載り、<code>fillBackground(1)</code>（先頭タイル）や <code>setScroll</code> / <code>drawBgTile</code> で画面に出せます。タイル0は空白予約です。</p>
         <h3>配置</h3>
         <ul class="create-placement-list">${placementRows || "<li class='muted'>まだありません</li>"}</ul>
         <button type="button" id="v3-add-placement">＋ 配置を追加</button>

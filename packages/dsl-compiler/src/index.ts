@@ -1,4 +1,4 @@
-export { compile, type CompileResult, type CompileAssets } from "./compile.js";
+export { compile, programUsesBackground, type CompileResult, type CompileAssets } from "./compile.js";
 export { parse } from "./parser.js";
 export { generate, type SoundSequenceDef, type GenerateOptions } from "./codegen.js";
 export { ParseError } from "./parser.js";

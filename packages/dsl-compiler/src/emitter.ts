@@ -107,8 +107,14 @@ export class Emitter {
   INY(): this {
     return this.emit(0xc8);
   }
+  DEY(): this {
+    return this.emit(0x88);
+  }
   CPY_IMM(v: number): this {
     return this.emit(0xc0, v);
+  }
+  CPX_IMM(v: number): this {
+    return this.emit(0xe0, v);
   }
   CMP_IMM(v: number): this {
     return this.emit(0xc9, v);

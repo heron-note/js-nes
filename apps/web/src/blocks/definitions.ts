@@ -250,6 +250,48 @@ export function defineFamiJsBlocks(): void {
       },
     },
 
+    fjs_call_fillbackground: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("背景をタイルで埋める fillBackground")
+          .appendField(new Blockly.FieldNumber(0, 0, 255, 1), "TILE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_CALLS);
+        this.setTooltip("fillBackground(tile); ネームテーブル全体を同じタイルで埋める（init 向け）");
+      },
+    },
+
+    fjs_call_setscroll: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("スクロール setScroll X")
+          .appendField(new Blockly.FieldNumber(0, 0, 255, 1), "X")
+          .appendField("Y")
+          .appendField(new Blockly.FieldNumber(0, 0, 255, 1), "Y");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_CALLS);
+        this.setTooltip("setScroll(x, y); 背景のスクロール位置（毎フレーム NMI で反映）");
+      },
+    },
+
+    fjs_call_drawbgtile: {
+      init(this: Blockly.Block) {
+        this.appendDummyInput()
+          .appendField("背景タイル drawBgTile 列")
+          .appendField(new Blockly.FieldNumber(0, 0, 31, 1), "TX")
+          .appendField("行")
+          .appendField(new Blockly.FieldNumber(0, 0, 29, 1), "TY")
+          .appendField("タイル")
+          .appendField(new Blockly.FieldNumber(0, 0, 255, 1), "TILE");
+        this.setPreviousStatement(true, null);
+        this.setNextStatement(true, null);
+        this.setColour(COLOR_CALLS);
+        this.setTooltip("drawBgTile(tx, ty, tile); ネームテーブルの1マスを書く");
+      },
+    },
+
     fjs_on_overlap: {
       init(this: Blockly.Block) {
         this.appendDummyInput()

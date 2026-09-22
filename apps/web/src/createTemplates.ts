@@ -22,6 +22,7 @@ import {
 } from "./projectV3.js";
 import { paintTile, type TilePattern } from "./templateGraphics.js";
 import { dslHeroPlatformerMove, dslHitBox, paintHeroWalkSheet } from "./gameKit.js";
+import { BACKGROUND_TILE_BASE } from "./projectBackground.js";
 
 export type CreateTemplateId =
   | "empty"
@@ -62,7 +63,7 @@ export const CREATE_TEMPLATES: CreateTemplateInfo[] = [
   {
     id: "side_scroll",
     title: "横スクロール＋ゴール（SMB 風）",
-    blurb: "ダッシュ／ジャンプで右へ進み、旗でクリアシーンへ。BGM ループ付き。",
+    blurb: "背景スクロール＋ダッシュ／ジャンプ。旗でクリア。BGM ループ付き。",
     badge: "横スクロール",
   },
   {
@@ -353,6 +354,7 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
   addSound(project, "CoinGet", 0, 36, 8, "se");
   addSound(project, "Hurt", 1, 12, 10, "se");
   addLoopBgm(project, "StageBgm");
+  const skyId = addBitmap(project, "Sky", "sky");
 
   // 先頭シーンを Title に改名し、Main / Clear を追加
   const title = mainScene(project);
@@ -363,17 +365,19 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
     "function init() {",
     "  setPalette(0, 1, 33, 0, 0);",
     "  setSpritePalette(0, 1, 34, 0, 0);",
+    "  fillBackground(0);",
     "  titleHero.x = 120;",
     "  titleHero.y = 140;",
     "}",
     "",
     "function update() {",
-    "  drawSprite(0, titleHero.x, titleHero.y, 0, 0);",
+    "  Hero.move(titleHero);",
     "  if (btn.start_just_pressed) { gotoScene(Main); }",
     "}",
   ].join("\n");
 
   const main = addScene(project, "Main");
+  main.backgroundBitmapId = skyId;
   main.legacyCode = [
     "instance hero: Hero;",
     "instance goomba: Goomba;",
@@ -384,6 +388,8 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
     "  setPalette(0, 1, 33, 0, 0);",
     "  setSpritePalette(0, 1, 34, 0, 0);",
     "  setSpritePalette(1, 1, 22, 0, 0);",
+    `  fillBackground(${BACKGROUND_TILE_BASE});`,
+    "  setScroll(0, 0);",
     "  hero.x = 40;",
     "  hero.y = 180;",
     "  hero.hurt = 0;",
@@ -396,6 +402,7 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
     "  Goomba.move(goomba);",
     "  Coin.move(coin);",
     "  Ground.move(ground);",
+    "  setScroll(hero.x, 0);",
     "  if (coin.taken) { } else {",
     dslHitBox("hero", "coin", 16, ["coin.taken = 1;", "playSound(CoinGet);"]),
     "  }",
@@ -419,13 +426,14 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
     "function init() {",
     "  setPalette(0, 1, 33, 0, 0);",
     "  setSpritePalette(0, 1, 34, 0, 0);",
+    "  fillBackground(0);",
     "  clearHero.x = 120;",
     "  clearHero.y = 120;",
     "  playTone(0, 36, 20);",
     "}",
     "",
     "function update() {",
-    "  drawSprite(0, clearHero.x, clearHero.y, 0, 0);",
+    "  Hero.move(clearHero);",
     "  if (btn.start_just_pressed) { gotoScene(Title); }",
     "}",
   ].join("\n");
@@ -472,6 +480,7 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
   addSound(project, "Jump", 0, 30, 5, "se");
   addSound(project, "Goal", 0, 40, 20, "se");
   addLoopBgm(project, "StageBgm");
+  const skyId = addBitmap(project, "Sky", "sky");
 
   const title = mainScene(project);
   title.name = "Title";
@@ -481,17 +490,19 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
     "function init() {",
     "  setPalette(0, 1, 33, 0, 0);",
     "  setSpritePalette(0, 1, 34, 0, 0);",
+    "  fillBackground(0);",
     "  titleMario.x = 120;",
     "  titleMario.y = 140;",
     "}",
     "",
     "function update() {",
-    "  drawSprite(0, titleMario.x, titleMario.y, 0, 0);",
+    "  Mario.move(titleMario);",
     "  if (btn.start_just_pressed) { gotoScene(Main); }",
     "}",
   ].join("\n");
 
   const main = addScene(project, "Main");
+  main.backgroundBitmapId = skyId;
   main.legacyCode = [
     "instance mario: Mario;",
     "instance block: Block;",
@@ -501,6 +512,8 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
     "  setPalette(0, 1, 33, 0, 0);",
     "  setSpritePalette(0, 1, 34, 0, 0);",
     "  setSpritePalette(1, 1, 16, 0, 0);",
+    `  fillBackground(${BACKGROUND_TILE_BASE});`,
+    "  setScroll(0, 0);",
     "  mario.x = 40;",
     "  mario.y = 180;",
     "  playSound(StageBgm);",
@@ -510,6 +523,7 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
     "  Mario.move(mario);",
     "  Block.move(block);",
     "  Flag.move(flag);",
+    "  setScroll(mario.x, 0);",
     dslHitBox("mario", "flag", 16, ["playSound(Goal);", "gotoScene(Clear);"]),
     "}",
   ].join("\n");
@@ -521,12 +535,13 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
     "function init() {",
     "  setPalette(0, 1, 33, 0, 0);",
     "  setSpritePalette(0, 1, 34, 0, 0);",
+    "  fillBackground(0);",
     "  clearMario.x = 120;",
     "  clearMario.y = 120;",
     "}",
     "",
     "function update() {",
-    "  drawSprite(0, clearMario.x, clearMario.y, 0, 0);",
+    "  Mario.move(clearMario);",
     "  if (btn.start_just_pressed) { gotoScene(Title); }",
     "}",
   ].join("\n");
