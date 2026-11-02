@@ -84,9 +84,24 @@ export function paintHeroWalkSheet(pixels: number[]): void {
 export function dslHeroPlatformerMove(opts?: {
   groundY?: number;
   spriteId?: number;
+  /** 歩く速さ（px/フレーム）。既定 2。 */
+  walkSpeed?: number;
+  /** ダッシュ（Bボタン）時の速さ。既定 3。 */
+  dashSpeed?: number;
+  /** ジャンプ上昇の継続フレーム数（高いほど高く跳ぶ）。既定 10。 */
+  jumpFrames?: number;
+  /** ジャンプ中の上昇速度。既定 3。 */
+  riseSpeed?: number;
+  /** 落下速度。既定 2。 */
+  fallSpeed?: number;
 }): string {
   const groundY = opts?.groundY ?? 180;
   const sid = opts?.spriteId ?? 0;
+  const walk = opts?.walkSpeed ?? 2;
+  const dash = opts?.dashSpeed ?? 3;
+  const jumpFrames = opts?.jumpFrames ?? 10;
+  const rise = opts?.riseSpeed ?? 3;
+  const fall = opts?.fallSpeed ?? 2;
   return [
     "field x = 40;",
     `field y = ${groundY};`,
@@ -103,19 +118,19 @@ export function dslHeroPlatformerMove(opts?: {
     "behavior move(self) {",
     "  self.moving = 0;",
     "  if (btn.right) {",
-    "    if (btn.b) { self.x += 3; } else { self.x += 2; }",
+    `    if (btn.b) { self.x += ${dash}; } else { self.x += ${walk}; }`,
     "    self.facing = 0;",
     "    self.moving = 1;",
     "  }",
     "  if (btn.left) {",
-    "    if (btn.b) { self.x -= 3; } else { self.x -= 2; }",
+    `    if (btn.b) { self.x -= ${dash}; } else { self.x -= ${walk}; }`,
     "    self.facing = 1;",
     "    self.moving = 1;",
     "  }",
     "  if (btn.a_just_pressed) {",
-    "    if (self.onGround) { self.jumpLeft = 10; self.onGround = 0; playTone(0, 28, 6); }",
+    `    if (self.onGround) { self.jumpLeft = ${jumpFrames}; self.onGround = 0; playTone(0, 28, 6); }`,
     "  }",
-    "  if (self.jumpLeft > 0) { self.y -= 3; self.jumpLeft -= 1; } else { self.y += 2; }",
+    `  if (self.jumpLeft > 0) { self.y -= ${rise}; self.jumpLeft -= 1; } else { self.y += ${fall}; }`,
     `  if (self.y > ${groundY}) { self.y = ${groundY}; self.onGround = 1; }`,
     "  if (self.x < 8) { self.x = 8; }",
     "  if (self.x > 240) { self.x = 240; }",

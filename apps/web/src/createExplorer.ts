@@ -342,6 +342,11 @@ export function mountCreateExplorer(
             </label>`,
           ).join("")}
         </fieldset>
+        <fieldset class="tuning-wizard" id="wiz-tuning" hidden>
+          <legend>ゲームの調整（任意）</legend>
+          <div class="tuning-fields" id="wiz-tuning-fields"></div>
+          <p class="muted">選んだ内容は、作られるゲームの速さや強さに反映されます。そのままでも大丈夫です。</p>
+        </fieldset>
         <details class="mapper-details">
           <summary>上級者向け設定：マッパーを変更する（通常は変更不要）</summary>
         <fieldset class="mapper-wizard">
@@ -368,6 +373,33 @@ export function mountCreateExplorer(
           <button type="button" id="wiz-cancel" class="secondary">キャンセル</button>
         </div>
       `;
+      const tuningBox = editor.querySelector<HTMLFieldSetElement>("#wiz-tuning")!;
+      const tuningFields = editor.querySelector<HTMLDivElement>("#wiz-tuning-fields")!;
+      const renderTuningFields = (): void => {
+        const checkedTpl = editor.querySelector<HTMLInputElement>('input[name="wiz-template"]:checked');
+        const tpl = CREATE_TEMPLATES.find((t) => t.id === checkedTpl?.value);
+        const options = tpl?.options ?? [];
+        tuningBox.hidden = options.length === 0;
+        tuningFields.innerHTML = options
+          .map(
+            (o) => `
+            <label class="create-field">${escapeHtml(o.label)}
+              <select name="wiz-tune-${o.key}">
+                ${o.choices
+                  .map(
+                    (c) =>
+                      `<option value="${c.value}"${c.value === o.defaultValue ? " selected" : ""}>${escapeHtml(c.label)}</option>`,
+                  )
+                  .join("")}
+              </select>
+            </label>`,
+          )
+          .join("");
+      };
+      editor
+        .querySelectorAll<HTMLInputElement>('input[name="wiz-template"]')
+        .forEach((r) => r.addEventListener("change", renderTuningFields));
+      renderTuningFields();
       editor.querySelector("#wiz-create")!.addEventListener("click", () => {
         if (!window.confirm("この内容で新しいプロジェクトを作成します。今のプロジェクトは置き換わります。よろしいですか？")) return;
         const title = editor.querySelector<HTMLInputElement>("#wiz-title")!.value.trim() || "新規プロジェクト";
@@ -376,7 +408,11 @@ export function mountCreateExplorer(
         const checkedTpl = editor.querySelector<HTMLInputElement>('input[name="wiz-template"]:checked');
         const tplRaw = checkedTpl?.value ?? "starter";
         const tplId: CreateTemplateId = isCreateTemplateId(tplRaw) ? tplRaw : "starter";
-        project = buildTemplateProjectV3(tplId, { title, mapperId });
+        const tuning: Record<string, string> = {};
+        editor.querySelectorAll<HTMLSelectElement>('select[name^="wiz-tune-"]').forEach((sel) => {
+          tuning[sel.name.slice("wiz-tune-".length)] = sel.value;
+        });
+        project = buildTemplateProjectV3(tplId, { title, mapperId, tuning });
         selection = { kind: "project" };
         commit();
         const firstCh = project.characterOrder[0];

@@ -349,6 +349,31 @@ h1 .subtitle {
   gap: 8px;
 }
 
+.tuning-wizard {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  margin: 12px 0;
+  padding: 10px 12px;
+}
+
+.tuning-wizard legend {
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.tuning-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.tuning-fields .create-field {
+  margin-bottom: 4px;
+  min-width: 10rem;
+}
+
 .template-card {
   display: flex;
   gap: 10px;

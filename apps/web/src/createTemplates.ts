@@ -34,11 +34,122 @@ export type CreateTemplateId =
   | "rpg"
   | "chase";
 
+export type TemplateOptionChoice = {
+  value: string;
+  label: string;
+};
+
+/** ウィザードで選べる「ゲームの調整」項目。選んだ値は生成コードに数値として焼き込まれる。 */
+export type TemplateOptionDef = {
+  key: string;
+  label: string;
+  choices: TemplateOptionChoice[];
+  defaultValue: string;
+};
+
 export type CreateTemplateInfo = {
   id: CreateTemplateId;
   title: string;
   blurb: string;
   badge: string;
+  options?: TemplateOptionDef[];
+};
+
+const SPEED_OPTION: TemplateOptionDef = {
+  key: "speed",
+  label: "歩く速さ",
+  choices: [
+    { value: "slow", label: "ゆっくり" },
+    { value: "normal", label: "ふつう" },
+    { value: "fast", label: "速い" },
+  ],
+  defaultValue: "normal",
+};
+
+const JUMP_OPTION: TemplateOptionDef = {
+  key: "jump",
+  label: "ジャンプの高さ",
+  choices: [
+    { value: "low", label: "低い" },
+    { value: "normal", label: "ふつう" },
+    { value: "high", label: "高い" },
+  ],
+  defaultValue: "normal",
+};
+
+const HURT_OPTION: TemplateOptionDef = {
+  key: "hurt",
+  label: "ダメージ後の無敵時間",
+  choices: [
+    { value: "short", label: "短い" },
+    { value: "normal", label: "ふつう" },
+    { value: "long", label: "長い" },
+  ],
+  defaultValue: "normal",
+};
+
+const SHMUP_SPEED_OPTION: TemplateOptionDef = {
+  key: "speed",
+  label: "自機の速さ",
+  choices: [
+    { value: "slow", label: "ゆっくり" },
+    { value: "normal", label: "ふつう" },
+    { value: "fast", label: "速い" },
+  ],
+  defaultValue: "normal",
+};
+
+const BULLET_OPTION: TemplateOptionDef = {
+  key: "bullet",
+  label: "弾の速さ",
+  choices: [
+    { value: "slow", label: "ゆっくり" },
+    { value: "normal", label: "ふつう" },
+    { value: "fast", label: "速い" },
+  ],
+  defaultValue: "normal",
+};
+
+const ENEMY_OPTION: TemplateOptionDef = {
+  key: "enemy",
+  label: "敵の落ちてくる速さ",
+  choices: [
+    { value: "normal", label: "ふつう" },
+    { value: "fast", label: "速い" },
+  ],
+  defaultValue: "normal",
+};
+
+const HP_OPTION: TemplateOptionDef = {
+  key: "hp",
+  label: "体力（HP）",
+  choices: [
+    { value: "low", label: "少なめ（3）" },
+    { value: "normal", label: "ふつう（5）" },
+    { value: "high", label: "多め（8）" },
+  ],
+  defaultValue: "normal",
+};
+
+const PACE_OPTION: TemplateOptionDef = {
+  key: "pace",
+  label: "歩く速さ",
+  choices: [
+    { value: "fast", label: "速い" },
+    { value: "normal", label: "ふつう" },
+    { value: "slow", label: "ゆっくり" },
+  ],
+  defaultValue: "normal",
+};
+
+const GHOST_OPTION: TemplateOptionDef = {
+  key: "ghost",
+  label: "ゴーストの速さ",
+  choices: [
+    { value: "normal", label: "ふつう" },
+    { value: "fast", label: "速い" },
+  ],
+  defaultValue: "normal",
 };
 
 export const CREATE_TEMPLATES: CreateTemplateInfo[] = [
@@ -59,40 +170,75 @@ export const CREATE_TEMPLATES: CreateTemplateInfo[] = [
     title: "プラットフォーマー（旧マリオ風）",
     blurb: "タイトル→本編→クリアの3シーン。歩行・ダッシュ・ジャンプ、敵／コイン接触、BGM ループ。",
     badge: "横アクション",
+    options: [SPEED_OPTION, JUMP_OPTION, HURT_OPTION],
   },
   {
     id: "side_scroll",
     title: "横スクロール＋ゴール（SMB 風）",
     blurb: "背景スクロール＋ダッシュ／ジャンプ。旗でクリア。BGM ループ付き。",
     badge: "横スクロール",
+    options: [SPEED_OPTION, JUMP_OPTION],
   },
   {
     id: "shmup",
     title: "縦スクロールシューティング",
     blurb: "自機を動かし A で弾。敵は上から降り、弾ヒット／接触の骨組み付き。",
     badge: "シューティング",
+    options: [SHMUP_SPEED_OPTION, BULLET_OPTION, ENEMY_OPTION],
   },
   {
     id: "fighter",
     title: "格闘ゲーム風",
     blurb: "1P 操作と 2P（簡易 AI）。接近して A で攻撃ヒット、HP 減少の骨組み。",
     badge: "格闘",
+    options: [HP_OPTION],
   },
   {
     id: "rpg",
     title: "初期型 RPG 風（DQ/FF）",
     blurb: "8px 単位の歩幅移動と NPC。近づくと talk フラグが立つ（会話 UI は後続）。",
     badge: "RPG",
+    options: [PACE_OPTION],
   },
   {
     id: "chase",
     title: "追いかけっこ（パックマン風）",
     blurb: "画面内を 4 方向移動。ゴーストがプレイヤーを追尾。重なりでスタートへ戻る。",
     badge: "チェイス",
+    options: [SPEED_OPTION, GHOST_OPTION],
   },
 ];
 
-type BuildOpts = { title?: string; mapperId?: CreateMapperId };
+type BuildOpts = {
+  title?: string;
+  mapperId?: CreateMapperId;
+  /** ウィザードの「ゲームの調整」で選んだ値（キー → 選択肢 value）。未指定は既定値。 */
+  tuning?: Record<string, string>;
+};
+
+/** tuning の選択肢を数値表から引く。未知の値は fallback。 */
+function tuneNum(opts: BuildOpts, key: string, table: Record<string, number>, fallback: number): number {
+  const v = opts.tuning?.[key];
+  return (v !== undefined ? table[v] : undefined) ?? fallback;
+}
+
+const HERO_WALK: Record<string, { walk: number; dash: number }> = {
+  slow: { walk: 1, dash: 2 },
+  normal: { walk: 2, dash: 3 },
+  fast: { walk: 3, dash: 5 },
+};
+const HERO_JUMP_FRAMES: Record<string, number> = { low: 7, normal: 10, high: 14 };
+
+/** platformer / side_scroll 共通の主人公の動きの調整値。 */
+function heroMoveTuning(opts: BuildOpts): { walkSpeed: number; dashSpeed: number; jumpFrames: number } {
+  const speedKey = opts.tuning?.speed;
+  const sp = (speedKey !== undefined ? HERO_WALK[speedKey] : undefined) ?? HERO_WALK.normal!;
+  return {
+    walkSpeed: sp.walk,
+    dashSpeed: sp.dash,
+    jumpFrames: tuneNum(opts, "jump", HERO_JUMP_FRAMES, 10),
+  };
+}
 
 function mainScene(project: ProjectV3): SceneAsset {
   return project.scenes[project.sceneOrder[0]!]!;
@@ -304,7 +450,7 @@ function buildStarter(opts: BuildOpts): ProjectV3 {
 function buildPlatformer(opts: BuildOpts): ProjectV3 {
   const project = createEmptyProjectV3(opts.mapperId ?? 0);
   project.title = opts.title ?? "プラットフォーマー";
-  addCharacter(project, "Hero", addHeroBitmap(project, "Hero"), dslHeroPlatformerMove({ groundY: 180, spriteId: 0 }));
+  addCharacter(project, "Hero", addHeroBitmap(project, "Hero"), dslHeroPlatformerMove({ groundY: 180, spriteId: 0, ...heroMoveTuning(opts) }));
   addCharacter(
     project,
     "Goomba",
@@ -418,7 +564,7 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
     "  }",
     "  if (hero.hurt) { } else {",
     dslHitBox("hero", "goomba", 16, [
-      "hero.hurt = 45;",
+      `hero.hurt = ${tuneNum(opts, "hurt", { short: 25, normal: 45, long: 75 }, 45)};`,
       "hero.x = 40;",
       "playSound(Hurt);",
     ]),
@@ -458,7 +604,7 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
 function buildSideScroll(opts: BuildOpts): ProjectV3 {
   const project = createEmptyProjectV3(opts.mapperId ?? 0);
   project.title = opts.title ?? "横スクロール＋ゴール";
-  addCharacter(project, "Mario", addHeroBitmap(project, "Mario"), dslHeroPlatformerMove({ groundY: 180, spriteId: 0 }));
+  addCharacter(project, "Mario", addHeroBitmap(project, "Mario"), dslHeroPlatformerMove({ groundY: 180, spriteId: 0, ...heroMoveTuning(opts) }));
   addCharacter(
     project,
     "Block",
@@ -565,6 +711,9 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
 function buildShmup(opts: BuildOpts): ProjectV3 {
   const project = createEmptyProjectV3(opts.mapperId ?? 0);
   project.title = opts.title ?? "縦スクロールシューティング";
+  const shipSpeed = tuneNum(opts, "speed", { slow: 1, normal: 2, fast: 3 }, 2);
+  const bulletSpeed = tuneNum(opts, "bullet", { slow: 3, normal: 4, fast: 6 }, 4);
+  const enemyFall = tuneNum(opts, "enemy", { normal: 1, fast: 2 }, 1);
   addCharacter(
     project,
     "Ship",
@@ -577,10 +726,10 @@ function buildShmup(opts: BuildOpts): ProjectV3 {
       "field hit = 0;",
       "",
       "behavior move(self) {",
-      "  if (btn.left) { self.x -= 2; }",
-      "  if (btn.right) { self.x += 2; }",
-      "  if (btn.up) { self.y -= 2; }",
-      "  if (btn.down) { self.y += 2; }",
+      `  if (btn.left) { self.x -= ${shipSpeed}; }`,
+      `  if (btn.right) { self.x += ${shipSpeed}; }`,
+      `  if (btn.up) { self.y -= ${shipSpeed}; }`,
+      `  if (btn.down) { self.y += ${shipSpeed}; }`,
       "  if (self.x < 8) { self.x = 8; }",
       "  if (self.x > 240) { self.x = 240; }",
       "  if (self.y < 16) { self.y = 16; }",
@@ -603,7 +752,7 @@ function buildShmup(opts: BuildOpts): ProjectV3 {
       "",
       "behavior move(self) {",
       "  if (self.active) {",
-      "    self.y -= 4;",
+      `    self.y -= ${bulletSpeed};`,
       "    if (self.y < 8) { self.active = 0; }",
       "    drawSprite(1, self.x, self.y, 0, 0);",
       "  }",
@@ -622,7 +771,7 @@ function buildShmup(opts: BuildOpts): ProjectV3 {
       "field hy = 0;",
       "",
       "behavior move(self) {",
-      "  self.y += 1;",
+      `  self.y += ${enemyFall};`,
       "  if (self.goingRight) { self.x += 1; } else { self.x -= 1; }",
       "  if (self.x > 200) { self.goingRight = 0; }",
       "  if (self.x < 40) { self.goingRight = 1; }",
@@ -678,6 +827,7 @@ function buildShmup(opts: BuildOpts): ProjectV3 {
 function buildFighter(opts: BuildOpts): ProjectV3 {
   const project = createEmptyProjectV3(opts.mapperId ?? 0);
   project.title = opts.title ?? "格闘ゲーム風";
+  const hp = tuneNum(opts, "hp", { low: 3, normal: 5, high: 8 }, 5);
   addCharacter(
     project,
     "Fighter1",
@@ -685,7 +835,7 @@ function buildFighter(opts: BuildOpts): ProjectV3 {
     [
       "field x = 60;",
       "field y = 180;",
-      "field hp = 5;",
+      `field hp = ${hp};`,
       "field punch = 0;",
       "field hx = 0;",
       "field hy = 0;",
@@ -709,7 +859,7 @@ function buildFighter(opts: BuildOpts): ProjectV3 {
     [
       "field x = 180;",
       "field y = 180;",
-      "field hp = 5;",
+      `field hp = ${hp};`,
       "field punch = 0;",
       "field cool = 0;",
       "field hx = 0;",
@@ -757,8 +907,8 @@ function buildFighter(opts: BuildOpts): ProjectV3 {
     "  if (p2.punch > 0) {",
     hitNearX("p2", "p1", ["p1.hp -= 1;", "p2.punch = 0;", "playTone(1, 10, 6);"]),
     "  }",
-    "  if (p1.hp < 1) { p1.x = 60; p1.hp = 5; p2.x = 180; p2.hp = 5; }",
-    "  if (p2.hp < 1) { p1.x = 60; p1.hp = 5; p2.x = 180; p2.hp = 5; }",
+    `  if (p1.hp < 1) { p1.x = 60; p1.hp = ${hp}; p2.x = 180; p2.hp = ${hp}; }`,
+    `  if (p2.hp < 1) { p1.x = 60; p1.hp = ${hp}; p2.x = 180; p2.hp = ${hp}; }`,
     "}",
   ].join("\n");
 
@@ -770,6 +920,7 @@ function buildFighter(opts: BuildOpts): ProjectV3 {
 function buildRpg(opts: BuildOpts): ProjectV3 {
   const project = createEmptyProjectV3(opts.mapperId ?? 0);
   project.title = opts.title ?? "初期型 RPG 風";
+  const paceCool = tuneNum(opts, "pace", { fast: 4, normal: 8, slow: 12 }, 8);
   addCharacter(
     project,
     "Hero",
@@ -784,10 +935,10 @@ function buildRpg(opts: BuildOpts): ProjectV3 {
       "",
       "behavior move(self) {",
       "  if (self.cool > 0) { self.cool -= 1; } else {",
-      "    if (btn.right) { self.x += 8; self.cool = 8; }",
-      "    if (btn.left) { self.x -= 8; self.cool = 8; }",
-      "    if (btn.up) { self.y -= 8; self.cool = 8; }",
-      "    if (btn.down) { self.y += 8; self.cool = 8; }",
+      `    if (btn.right) { self.x += 8; self.cool = ${paceCool}; }`,
+      `    if (btn.left) { self.x -= 8; self.cool = ${paceCool}; }`,
+      `    if (btn.up) { self.y -= 8; self.cool = ${paceCool}; }`,
+      `    if (btn.down) { self.y += 8; self.cool = ${paceCool}; }`,
       "  }",
       "  if (self.x < 16) { self.x = 16; }",
       "  if (self.x > 232) { self.x = 232; }",
@@ -842,6 +993,8 @@ function buildRpg(opts: BuildOpts): ProjectV3 {
 function buildChase(opts: BuildOpts): ProjectV3 {
   const project = createEmptyProjectV3(opts.mapperId ?? 0);
   project.title = opts.title ?? "追いかけっこ";
+  const pacSpeed = tuneNum(opts, "speed", { slow: 1, normal: 2, fast: 3 }, 2);
+  const ghostSpeed = tuneNum(opts, "ghost", { normal: 1, fast: 2 }, 1);
   addCharacter(
     project,
     "Pac",
@@ -854,10 +1007,10 @@ function buildChase(opts: BuildOpts): ProjectV3 {
       "field hit = 0;",
       "",
       "behavior move(self) {",
-      "  if (btn.right) { self.x += 2; }",
-      "  if (btn.left) { self.x -= 2; }",
-      "  if (btn.up) { self.y -= 2; }",
-      "  if (btn.down) { self.y += 2; }",
+      `  if (btn.right) { self.x += ${pacSpeed}; }`,
+      `  if (btn.left) { self.x -= ${pacSpeed}; }`,
+      `  if (btn.up) { self.y -= ${pacSpeed}; }`,
+      `  if (btn.down) { self.y += ${pacSpeed}; }`,
       "  if (self.x < 24) { self.x = 24; }",
       "  if (self.x > 224) { self.x = 224; }",
       "  if (self.y < 24) { self.y = 24; }",
@@ -914,8 +1067,8 @@ function buildChase(opts: BuildOpts): ProjectV3 {
     "function update() {",
     "  Pac.move(pac);",
     "  // ゴースト追尾",
-    "  if (ghost.x > pac.x) { ghost.x -= 1; } else { ghost.x += 1; }",
-    "  if (ghost.y > pac.y) { ghost.y -= 1; } else { ghost.y += 1; }",
+    `  if (ghost.x > pac.x) { ghost.x -= ${ghostSpeed}; } else { ghost.x += ${ghostSpeed}; }`,
+    `  if (ghost.y > pac.y) { ghost.y -= ${ghostSpeed}; } else { ghost.y += ${ghostSpeed}; }`,
     "  Ghost.move(ghost);",
     "  Pellet.move(pellet);",
     "  if (pellet.taken) { } else {",
