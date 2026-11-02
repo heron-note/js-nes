@@ -251,6 +251,493 @@ export function loadDefaultWorkspace(workspace: Blockly.WorkspaceSvg): void {
   loadDefaultPlayerPartBlocks(workspace);
 }
 
+// --- テンプレート用シード（platformer）のための小さな組み立てヘルパー ---
+
+function fieldDecl(ws: Blockly.WorkspaceSvg, name: string, value: number): Blockly.Block {
+  const b = newBlock(ws, "fjs_field_decl");
+  b.setFieldValue(name, "NAME");
+  b.setFieldValue(value, "VALUE");
+  return b;
+}
+
+function numBlock(ws: Blockly.WorkspaceSvg, value: number): Blockly.Block {
+  const b = newBlock(ws, "fjs_number");
+  b.setFieldValue(value, "VALUE");
+  return b;
+}
+
+function selfGet(ws: Blockly.WorkspaceSvg, field: string): Blockly.Block {
+  const b = newBlock(ws, "fjs_self_field_get");
+  b.setFieldValue(field, "FIELD");
+  return b;
+}
+
+function selfSet(ws: Blockly.WorkspaceSvg, field: string, value: number): Blockly.Block {
+  const b = newBlock(ws, "fjs_self_field_set");
+  b.setFieldValue(field, "FIELD");
+  plugValue(b, "VALUE", numBlock(ws, value));
+  return b;
+}
+
+function selfAdd(ws: Blockly.WorkspaceSvg, field: string, num: number): Blockly.Block {
+  const b = newBlock(ws, "fjs_self_field_add");
+  b.setFieldValue(field, "FIELD");
+  b.setFieldValue(num, "NUM");
+  return b;
+}
+
+function selfSub(ws: Blockly.WorkspaceSvg, field: string, num: number): Blockly.Block {
+  const b = newBlock(ws, "fjs_self_field_sub");
+  b.setFieldValue(field, "FIELD");
+  b.setFieldValue(num, "NUM");
+  return b;
+}
+
+function btnCond(ws: Blockly.WorkspaceSvg, name: string, mode: "held" | "just"): Blockly.Block {
+  const b = newBlock(ws, "fjs_btn");
+  b.setFieldValue(name, "NAME");
+  b.setFieldValue(mode, "MODE");
+  return b;
+}
+
+function selfCompare(ws: Blockly.WorkspaceSvg, field: string, op: string, value: number): Blockly.Block {
+  const b = newBlock(ws, "fjs_compare_expr");
+  b.setFieldValue(op, "OP");
+  plugValue(b, "LEFT", selfGet(ws, field));
+  plugValue(b, "RIGHT", numBlock(ws, value));
+  return b;
+}
+
+function ifStmt(
+  ws: Blockly.WorkspaceSvg,
+  cond: Blockly.Block,
+  doBlocks: Blockly.Block[],
+  elseBlocks?: Blockly.Block[],
+): Blockly.Block {
+  const b = newBlock(ws, "fjs_if");
+  plugValue(b, "CONDITION", cond);
+  if (doBlocks.length > 0) plugStatement(b, "DO", stack(...doBlocks));
+  if (elseBlocks && elseBlocks.length > 0) plugStatement(b, "ELSE", stack(...elseBlocks));
+  return b;
+}
+
+function drawSpriteStmt(
+  ws: Blockly.WorkspaceSvg,
+  id: number,
+  x: Blockly.Block,
+  y: Blockly.Block,
+  tile: number,
+  palette: number,
+): Blockly.Block {
+  const b = newBlock(ws, "fjs_call_drawsprite");
+  b.setFieldValue(id, "ID");
+  b.setFieldValue(tile, "TILE");
+  b.setFieldValue(palette, "PALETTE");
+  plugValue(b, "X", x);
+  plugValue(b, "Y", y);
+  return b;
+}
+
+function drawSpriteFlipStmt(
+  ws: Blockly.WorkspaceSvg,
+  id: number,
+  x: Blockly.Block,
+  y: Blockly.Block,
+  tile: number,
+  palette: number,
+  flip: number,
+): Blockly.Block {
+  const b = newBlock(ws, "fjs_call_drawspriteflip");
+  b.setFieldValue(id, "ID");
+  b.setFieldValue(tile, "TILE");
+  b.setFieldValue(palette, "PALETTE");
+  b.setFieldValue(String(flip), "FLIP");
+  plugValue(b, "X", x);
+  plugValue(b, "Y", y);
+  return b;
+}
+
+function playToneStmt(ws: Blockly.WorkspaceSvg, channel: number, note: number, duration: number): Blockly.Block {
+  const b = newBlock(ws, "fjs_call_playtone");
+  b.setFieldValue(String(channel), "CHANNEL");
+  b.setFieldValue(note, "NOTE");
+  b.setFieldValue(duration, "DURATION");
+  return b;
+}
+
+function playSoundStmt(ws: Blockly.WorkspaceSvg, name: string): Blockly.Block {
+  const b = newBlock(ws, "fjs_call_playsound");
+  b.setFieldValue(name, "NAME");
+  return b;
+}
+
+/** フィールド群＋behavior move を1パーツ分組み立てる。呼び出し側で先に workspace.clear() すること。 */
+function partShell(
+  ws: Blockly.WorkspaceSvg,
+  fields: [string, number][],
+  body: Blockly.Block[],
+): void {
+  const behavior = newBlock(ws, "fjs_behavior_decl");
+  behavior.setFieldValue("move", "NAME");
+  plugStatement(behavior, "DO", stack(...body));
+  const fieldBlocks = fields.map(([n, v]) => fieldDecl(ws, n, v));
+  const top = stack(...fieldBlocks, behavior);
+  top.moveBy(20, 20);
+}
+
+/**
+ * platformer テンプレ「Hero」相当のブロック。dslHeroPlatformerMove の生成コードと対になる。
+ */
+export function loadPlatformerHeroPartBlocks(
+  workspace: Blockly.WorkspaceSvg,
+  opts: { groundY: number; spriteId: number; walkSpeed: number; dashSpeed: number; jumpFrames: number },
+): void {
+  const ws = workspace;
+  ws.clear();
+  const groundY = opts.groundY;
+  const sid = opts.spriteId;
+
+  const moveRight = ifStmt(ws, btnCond(ws, "right", "held"), [
+    ifStmt(ws, btnCond(ws, "b", "held"), [selfAdd(ws, "x", opts.dashSpeed)], [selfAdd(ws, "x", opts.walkSpeed)]),
+    selfSet(ws, "facing", 0),
+    selfSet(ws, "moving", 1),
+  ]);
+  const moveLeft = ifStmt(ws, btnCond(ws, "left", "held"), [
+    ifStmt(ws, btnCond(ws, "b", "held"), [selfSub(ws, "x", opts.dashSpeed)], [selfSub(ws, "x", opts.walkSpeed)]),
+    selfSet(ws, "facing", 1),
+    selfSet(ws, "moving", 1),
+  ]);
+  const jumpStart = ifStmt(ws, btnCond(ws, "a", "just"), [
+    ifStmt(ws, selfGet(ws, "onGround"), [
+      selfSet(ws, "jumpLeft", opts.jumpFrames),
+      selfSet(ws, "onGround", 0),
+      playToneStmt(ws, 0, 28, 6),
+    ]),
+  ]);
+  const riseFall = ifStmt(
+    ws,
+    selfCompare(ws, "jumpLeft", ">", 0),
+    [selfSub(ws, "y", 3), selfSub(ws, "jumpLeft", 1)],
+    [selfAdd(ws, "y", 2)],
+  );
+  const land = ifStmt(ws, selfCompare(ws, "y", ">", groundY), [
+    selfSet(ws, "y", groundY),
+    selfSet(ws, "onGround", 1),
+  ]);
+  const clampLeft = ifStmt(ws, selfCompare(ws, "x", "<", 8), [selfSet(ws, "x", 8)]);
+  const clampRight = ifStmt(ws, selfCompare(ws, "x", ">", 240), [selfSet(ws, "x", 240)]);
+  const hurtTick = ifStmt(ws, selfCompare(ws, "hurt", ">", 0), [selfSub(ws, "hurt", 1)]);
+  const walkTick = ifStmt(ws, selfGet(ws, "moving"), [selfAdd(ws, "walk", 1)], [selfSet(ws, "walk", 0)]);
+  const walkReset = ifStmt(ws, selfCompare(ws, "walk", ">", 15), [selfSet(ws, "walk", 0)]);
+  const draw = ifStmt(
+    ws,
+    selfGet(ws, "facing"),
+    [
+      ifStmt(
+        ws,
+        selfCompare(ws, "walk", ">", 7),
+        [drawSpriteFlipStmt(ws, sid, selfGet(ws, "x"), selfGet(ws, "y"), 1, 0, 1)],
+        [drawSpriteFlipStmt(ws, sid, selfGet(ws, "x"), selfGet(ws, "y"), 0, 0, 1)],
+      ),
+    ],
+    [
+      ifStmt(
+        ws,
+        selfCompare(ws, "walk", ">", 7),
+        [drawSpriteStmt(ws, sid, selfGet(ws, "x"), selfGet(ws, "y"), 1, 0)],
+        [drawSpriteStmt(ws, sid, selfGet(ws, "x"), selfGet(ws, "y"), 0, 0)],
+      ),
+    ],
+  );
+
+  partShell(
+    ws,
+    [
+      ["x", 40],
+      ["y", groundY],
+      ["onGround", 1],
+      ["jumpLeft", 0],
+      ["facing", 0],
+      ["walk", 0],
+      ["moving", 0],
+      ["hx", 0],
+      ["hy", 0],
+      ["hit", 0],
+      ["hurt", 0],
+    ],
+    [
+      selfSet(ws, "moving", 0),
+      moveRight,
+      moveLeft,
+      jumpStart,
+      riseFall,
+      land,
+      clampLeft,
+      clampRight,
+      hurtTick,
+      walkTick,
+      walkReset,
+      draw,
+    ],
+  );
+}
+
+/** platformer テンプレ「Goomba」相当のブロック（左右往復）。 */
+export function loadPlatformerGoombaPartBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  partShell(
+    ws,
+    [
+      ["x", 160],
+      ["y", 180],
+      ["goingRight", 0],
+      ["hx", 0],
+      ["hy", 0],
+    ],
+    [
+      ifStmt(ws, selfGet(ws, "goingRight"), [selfAdd(ws, "x", 1)], [selfSub(ws, "x", 1)]),
+      ifStmt(ws, selfCompare(ws, "x", ">", 220), [selfSet(ws, "goingRight", 0)]),
+      ifStmt(ws, selfCompare(ws, "x", "<", 80), [selfSet(ws, "goingRight", 1)]),
+      drawSpriteStmt(ws, 1, selfGet(ws, "x"), selfGet(ws, "y"), 0, 1),
+    ],
+  );
+}
+
+/** platformer テンプレ「Coin」相当のブロック（取られたら消える）。 */
+export function loadPlatformerCoinPartBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  partShell(
+    ws,
+    [
+      ["x", 100],
+      ["y", 140],
+      ["taken", 0],
+      ["hx", 0],
+      ["hy", 0],
+    ],
+    [
+      ifStmt(ws, selfGet(ws, "taken"), [], [
+        drawSpriteStmt(ws, 2, selfGet(ws, "x"), selfGet(ws, "y"), 0, 0),
+      ]),
+    ],
+  );
+}
+
+// --- テンプレート用シード（platformer シーン）のための組み立てヘルパー ---
+
+function instDecl(ws: Blockly.WorkspaceSvg, name: string, partType: string): Blockly.Block {
+  const b = newBlock(ws, "fjs_instance_decl");
+  b.setFieldValue(name, "NAME");
+  b.setFieldValue(partType, "PARTTYPE");
+  return b;
+}
+
+function instGet(ws: Blockly.WorkspaceSvg, instance: string, field: string): Blockly.Block {
+  const b = newBlock(ws, "fjs_instance_field_get");
+  b.setFieldValue(instance, "INSTANCE");
+  b.setFieldValue(field, "FIELD");
+  return b;
+}
+
+function instSet(ws: Blockly.WorkspaceSvg, instance: string, field: string, value: number): Blockly.Block {
+  const b = newBlock(ws, "fjs_instance_field_set");
+  b.setFieldValue(instance, "INSTANCE");
+  b.setFieldValue(field, "FIELD");
+  plugValue(b, "VALUE", numBlock(ws, value));
+  return b;
+}
+
+function behaviorCall(ws: Blockly.WorkspaceSvg, partType: string, instance: string): Blockly.Block {
+  const b = newBlock(ws, "fjs_call_behavior");
+  b.setFieldValue(partType, "PARTTYPE");
+  b.setFieldValue("move", "BEHAVIOR");
+  b.setFieldValue(instance, "INSTANCE");
+  return b;
+}
+
+function paletteStmt(
+  ws: Blockly.WorkspaceSvg,
+  sprite: boolean,
+  slot: number,
+  c0: number,
+  c1: number,
+): Blockly.Block {
+  const b = newBlock(ws, sprite ? "fjs_call_setspritepalette" : "fjs_call_setpalette");
+  b.setFieldValue(slot, "SLOT");
+  b.setFieldValue(c0, "C0");
+  b.setFieldValue(c1, "C1");
+  b.setFieldValue(0, "C2");
+  b.setFieldValue(0, "C3");
+  return b;
+}
+
+function fillBgStmt(ws: Blockly.WorkspaceSvg, tile: number): Blockly.Block {
+  const b = newBlock(ws, "fjs_call_fillbackground");
+  b.setFieldValue(tile, "TILE");
+  return b;
+}
+
+function setScrollStmt(ws: Blockly.WorkspaceSvg, x: Blockly.Block, y: Blockly.Block): Blockly.Block {
+  const b = newBlock(ws, "fjs_call_setscroll");
+  plugValue(b, "X", x);
+  plugValue(b, "Y", y);
+  return b;
+}
+
+function gotoSceneStmt(ws: Blockly.WorkspaceSvg, name: string): Blockly.Block {
+  const b = newBlock(ws, "fjs_call_gotoscene");
+  b.setFieldValue(name, "NAME");
+  return b;
+}
+
+function overlapStmt(
+  ws: Blockly.WorkspaceSvg,
+  a: string,
+  bName: string,
+  size: number,
+  body: Blockly.Block[],
+): Blockly.Block {
+  const b = newBlock(ws, "fjs_on_overlap");
+  b.setFieldValue(a, "A");
+  b.setFieldValue(bName, "B");
+  b.setFieldValue(size, "SIZE");
+  if (body.length > 0) plugStatement(b, "DO", stack(...body));
+  return b;
+}
+
+/** インスタンス群＋init/update を1シーン分組み立てる。呼び出し側で先に workspace.clear() すること。 */
+function sceneShell(
+  ws: Blockly.WorkspaceSvg,
+  instances: [string, string][],
+  initBody: Blockly.Block[],
+  updateBody: Blockly.Block[],
+): void {
+  const instBlocks = instances.map(([n, t]) => instDecl(ws, n, t));
+  const init = newBlock(ws, "fjs_scene_event_init");
+  if (initBody.length > 0) plugStatement(init, "DO", stack(...initBody));
+  const update = newBlock(ws, "fjs_scene_event_update");
+  if (updateBody.length > 0) plugStatement(update, "DO", stack(...updateBody));
+  if (instBlocks.length > 0) stack(...instBlocks).moveBy(20, 20);
+  init.moveBy(20, 120);
+  update.moveBy(20, 280);
+}
+
+/** platformer テンプレ「Title」シーン相当のブロック。 */
+export function loadPlatformerTitleSceneBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  sceneShell(
+    ws,
+    [["titleHero", "Hero"]],
+    [
+      paletteStmt(ws, false, 0, 1, 33),
+      paletteStmt(ws, true, 0, 1, 34),
+      fillBgStmt(ws, 0),
+      instSet(ws, "titleHero", "x", 120),
+      instSet(ws, "titleHero", "y", 140),
+    ],
+    [
+      behaviorCall(ws, "Hero", "titleHero"),
+      ifStmt(ws, btnCond(ws, "start", "just"), [gotoSceneStmt(ws, "Main")]),
+    ],
+  );
+}
+
+/** platformer テンプレ「Main」シーン相当のブロック。 */
+export function loadPlatformerMainSceneBlocks(
+  workspace: Blockly.WorkspaceSvg,
+  opts: { hurtFrames: number },
+): void {
+  const ws = workspace;
+  ws.clear();
+  sceneShell(
+    ws,
+    [
+      ["hero", "Hero"],
+      ["goomba", "Goomba"],
+      ["coin", "Coin"],
+      ["ground", "Ground"],
+    ],
+    [
+      paletteStmt(ws, false, 0, 1, 33),
+      paletteStmt(ws, true, 0, 1, 34),
+      paletteStmt(ws, true, 1, 1, 22),
+      fillBgStmt(ws, 1),
+      setScrollStmt(ws, numBlock(ws, 0), numBlock(ws, 0)),
+      instSet(ws, "hero", "x", 40),
+      instSet(ws, "hero", "y", 180),
+      instSet(ws, "hero", "hurt", 0),
+      instSet(ws, "coin", "taken", 0),
+      playSoundStmt(ws, "StageBgm"),
+    ],
+    [
+      behaviorCall(ws, "Hero", "hero"),
+      behaviorCall(ws, "Goomba", "goomba"),
+      behaviorCall(ws, "Coin", "coin"),
+      behaviorCall(ws, "Ground", "ground"),
+      setScrollStmt(ws, instGet(ws, "hero", "x"), numBlock(ws, 0)),
+      ifStmt(ws, instGet(ws, "coin", "taken"), [], [
+        overlapStmt(ws, "hero", "coin", 16, [
+          instSet(ws, "coin", "taken", 1),
+          playSoundStmt(ws, "CoinGet"),
+        ]),
+      ]),
+      ifStmt(ws, instGet(ws, "hero", "hurt"), [], [
+        overlapStmt(ws, "hero", "goomba", 16, [
+          instSet(ws, "hero", "hurt", opts.hurtFrames),
+          instSet(ws, "hero", "x", 40),
+          playSoundStmt(ws, "Hurt"),
+        ]),
+      ]),
+      ifStmt(ws, instGet(ws, "coin", "taken"), [
+        ifStmt(ws, btnCond(ws, "start", "just"), [gotoSceneStmt(ws, "Clear")]),
+      ]),
+    ],
+  );
+}
+
+/** platformer テンプレ「Clear」シーン相当のブロック。 */
+export function loadPlatformerClearSceneBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  sceneShell(
+    ws,
+    [["clearHero", "Hero"]],
+    [
+      paletteStmt(ws, false, 0, 1, 33),
+      paletteStmt(ws, true, 0, 1, 34),
+      fillBgStmt(ws, 0),
+      instSet(ws, "clearHero", "x", 120),
+      instSet(ws, "clearHero", "y", 120),
+      playToneStmt(ws, 0, 36, 20),
+    ],
+    [
+      behaviorCall(ws, "Hero", "clearHero"),
+      ifStmt(ws, btnCond(ws, "start", "just"), [gotoSceneStmt(ws, "Title")]),
+    ],
+  );
+}
+
+/** platformer テンプレ「Ground」相当のブロック（地面タイルを8枚並べる）。 */
+export function loadPlatformerGroundPartBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  const draws: Blockly.Block[] = [];
+  for (let i = 0; i < 8; i++) {
+    draws.push(drawSpriteStmt(ws, 10 + i, numBlock(ws, 16 + i * 32), selfGet(ws, "y"), 0, 1));
+  }
+  partShell(
+    ws,
+    [
+      ["x", 0],
+      ["y", 188],
+    ],
+    draws,
+  );
+}
+
 /**
  * ビットマップのタイル格子ぶん drawSprite をワークスペース末尾へ追加する。
  * 最大 4×4。X/Y は self.x+tx*8 / self.y+ty*8。
@@ -324,8 +811,11 @@ export function appendMultiTileDrawSprites(
 
 export function isEmptyBlockState(blocks: unknown): boolean {
   if (!blocks || typeof blocks !== "object") return true;
-  const state = blocks as { blocks?: unknown[] };
-  return !Array.isArray(state.blocks) || state.blocks.length === 0;
+  // Blockly.serialization.workspaces.save の実形式は { blocks: { languageVersion, blocks: [...] } }。
+  // 配列が直接入っている形（旧形式）も受け付ける。
+  const state = blocks as { blocks?: { blocks?: unknown[] } | unknown[] };
+  const list = Array.isArray(state.blocks) ? state.blocks : state.blocks?.blocks;
+  return !Array.isArray(list) || list.length === 0;
 }
 
 /**

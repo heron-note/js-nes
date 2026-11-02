@@ -8,6 +8,13 @@ import {
   loadDefaultMainSceneBlocks,
   loadDefaultMoverPartBlocks,
   loadDefaultPlayerPartBlocks,
+  loadPlatformerClearSceneBlocks,
+  loadPlatformerCoinPartBlocks,
+  loadPlatformerGoombaPartBlocks,
+  loadPlatformerGroundPartBlocks,
+  loadPlatformerHeroPartBlocks,
+  loadPlatformerMainSceneBlocks,
+  loadPlatformerTitleSceneBlocks,
 } from "./blocks/blockEditor.js";
 import { PART_TOOLBOX, SCENE_TOOLBOX } from "./blocks/toolbox.js";
 import {
@@ -585,7 +592,7 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
     "  fillBackground(0);",
     "  clearHero.x = 120;",
     "  clearHero.y = 120;",
-    "  playTone(0, 36, 20);",
+    "  playTone(0, 35, 20);",
     "}",
     "",
     "function update() {",
@@ -598,7 +605,65 @@ function buildPlatformer(opts: BuildOpts): ProjectV3 {
   place(project, "Goomba", 160, 180, "Main");
   place(project, "Coin", 100, 140, "Main");
   place(project, "Ground", 0, 188, "Main");
+  seedPlatformerBlocks(project, opts);
   return project;
+}
+
+/**
+ * platformer のキャラ／シーンへブロックの種を埋め込む（starter の seedStarterBlocks と同方式）。
+ * capture はブラウザ DOM が必要。失敗時は legacyCode のままにする。
+ * 生成コードが従来の legacyCode と一致することは createTemplatesBlocks.test.ts で検証する。
+ */
+function seedPlatformerBlocks(project: ProjectV3, opts: BuildOpts): void {
+  if (typeof document === "undefined") return;
+  try {
+    const hero = heroMoveTuning(opts);
+    const hurtFrames = tuneNum(opts, "hurt", { short: 25, normal: 45, long: 75 }, 45);
+    for (const id of project.characterOrder) {
+      const ch = project.characters[id]!;
+      if (ch.name === "Hero") {
+        const c = capturePartBlockState(
+          (ws) => loadPlatformerHeroPartBlocks(ws, { groundY: 180, spriteId: 0, ...hero }),
+          PART_TOOLBOX,
+        );
+        ch.behaviorBlocks = c.blocks;
+        ch.legacyCode = c.code;
+      } else if (ch.name === "Goomba") {
+        const c = capturePartBlockState(loadPlatformerGoombaPartBlocks, PART_TOOLBOX);
+        ch.behaviorBlocks = c.blocks;
+        ch.legacyCode = c.code;
+      } else if (ch.name === "Coin") {
+        const c = capturePartBlockState(loadPlatformerCoinPartBlocks, PART_TOOLBOX);
+        ch.behaviorBlocks = c.blocks;
+        ch.legacyCode = c.code;
+      } else if (ch.name === "Ground") {
+        const c = capturePartBlockState(loadPlatformerGroundPartBlocks, PART_TOOLBOX);
+        ch.behaviorBlocks = c.blocks;
+        ch.legacyCode = c.code;
+      }
+    }
+    for (const id of project.sceneOrder) {
+      const sc = project.scenes[id]!;
+      if (sc.name === "Title") {
+        const c = captureSceneBlockState(loadPlatformerTitleSceneBlocks, SCENE_TOOLBOX);
+        sc.logicBlocks = c.blocks;
+        sc.legacyCode = c.code;
+      } else if (sc.name === "Main") {
+        const c = captureSceneBlockState(
+          (ws) => loadPlatformerMainSceneBlocks(ws, { hurtFrames }),
+          SCENE_TOOLBOX,
+        );
+        sc.logicBlocks = c.blocks;
+        sc.legacyCode = c.code;
+      } else if (sc.name === "Clear") {
+        const c = captureSceneBlockState(loadPlatformerClearSceneBlocks, SCENE_TOOLBOX);
+        sc.logicBlocks = c.blocks;
+        sc.legacyCode = c.code;
+      }
+    }
+  } catch {
+    // テスト環境など DOM 不完全時は legacyCode のままにする
+  }
 }
 
 function buildSideScroll(opts: BuildOpts): ProjectV3 {
