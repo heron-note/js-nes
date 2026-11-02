@@ -223,6 +223,31 @@ export function mountCreateExplorer(
     });
   }
 
+  /** ブロック編集ツールバー（元に戻す／やり直す／選択中のブロックを削除）を配線する。 */
+  function wireBlockToolbar(scope: HTMLElement): void {
+    const status = scope.querySelector<HTMLElement>("#v3-blocks-status");
+    const note = (msg: string): void => {
+      if (status) status.textContent = msg;
+    };
+    scope.querySelector("#v3-blocks-undo")?.addEventListener("click", () => {
+      blockWorkspace?.undo(false);
+      note("元に戻しました");
+    });
+    scope.querySelector("#v3-blocks-redo")?.addEventListener("click", () => {
+      blockWorkspace?.undo(true);
+      note("やり直しました");
+    });
+    scope.querySelector("#v3-blocks-delete")?.addEventListener("click", () => {
+      const selected = Blockly.getSelected();
+      if (selected instanceof Blockly.BlockSvg) {
+        selected.checkAndDelete();
+        note("選択中のブロックを削除しました");
+      } else {
+        note("先に、消したいブロックをクリックして選んでください");
+      }
+    });
+  }
+
   function renderTree(): void {
     const rows: string[] = [];
     const sel = (active: boolean) => (active ? ' aria-current="true"' : "");
@@ -299,7 +324,7 @@ export function mountCreateExplorer(
       const caps = listMapperCapabilities();
       editor.innerHTML = `
         <h2>新規プロジェクト</h2>
-        <p class="muted">テンプレートでジャンルの骨組みを選び、マッパーを決めて作成します。エミュ対応マッパーはすべてビルドできます。</p>
+        <p class="muted">作りたいゲームの種類（テンプレート）を選ぶだけです。迷ったら「はじめてのサンプル」がおすすめです。マッパーは上級者向けの設定なので、通常はそのままで大丈夫です。</p>
         <label class="create-field">タイトル
           <input type="text" id="wiz-title" value="新規プロジェクト" />
         </label>
@@ -317,6 +342,8 @@ export function mountCreateExplorer(
             </label>`,
           ).join("")}
         </fieldset>
+        <details class="mapper-details">
+          <summary>上級者向け設定：マッパーを変更する（通常は変更不要）</summary>
         <fieldset class="mapper-wizard">
           <legend>マッパー</legend>
           ${caps
@@ -335,12 +362,14 @@ export function mountCreateExplorer(
             )
             .join("")}
         </fieldset>
+        </details>
         <div class="create-wizard-actions">
           <button type="button" id="wiz-create">この内容で作成</button>
           <button type="button" id="wiz-cancel" class="secondary">キャンセル</button>
         </div>
       `;
       editor.querySelector("#wiz-create")!.addEventListener("click", () => {
+        if (!window.confirm("この内容で新しいプロジェクトを作成します。今のプロジェクトは置き換わります。よろしいですか？")) return;
         const title = editor.querySelector<HTMLInputElement>("#wiz-title")!.value.trim() || "新規プロジェクト";
         const checkedMapper = editor.querySelector<HTMLInputElement>('input[name="wiz-mapper"]:checked');
         const mapperId = Number(checkedMapper?.value ?? 0) as CreateMapperId;
@@ -372,6 +401,15 @@ export function mountCreateExplorer(
       const cap = MAPPER_CAPABILITIES[project.mapperId];
       editor.innerHTML = `
         <h2>プロジェクト</h2>
+        <div class="create-guide-box">
+          <h3>はじめ方（3ステップ）</h3>
+          <ol>
+            <li>左のツリーで「キャラクター → Player」を開く</li>
+            <li>ブロックの数値を変えたり、ブロックを組み替えてみる</li>
+            <li>下の「ビルド&amp;実行」を押すと Play 画面で動きます（方向キーを押しっぱなしで移動します）</li>
+          </ol>
+          <p class="muted">作りかけは自動でこのブラウザに保存されます。区切りのよいところで「保存する」ボタンを押すと、保存した時刻が表示されます。</p>
+        </div>
         <p class="muted">マッパーがプロジェクトの根です。使える標準ブロックは共通で、容量・バンク可否がマッパーごとに変わります。</p>
         <label class="create-field">タイトル
           <input type="text" id="v3-title" value="${escapeAttr(project.title)}" />
@@ -416,6 +454,7 @@ export function mountCreateExplorer(
         </div>
         <h3>プロジェクトファイル</h3>
         <div class="create-wizard-actions">
+          <button type="button" id="v3-save-btn">💾 保存する</button>
           <button type="button" id="v3-export-btn" class="secondary">JSON を書き出す</button>
           <label class="secondary create-file-label">
             JSON を読み込む
@@ -458,6 +497,11 @@ export function mountCreateExplorer(
         options.onBuild?.();
       });
       const ioStatus = editor.querySelector<HTMLParagraphElement>("#v3-io-status")!;
+      editor.querySelector("#v3-save-btn")!.addEventListener("click", () => {
+        flushBlocks();
+        persist();
+        ioStatus.textContent = `保存しました（${new Date().toLocaleTimeString("ja-JP")}）。次に開いたときも、このブラウザでは続きから作れます。`;
+      });
       editor.querySelector("#v3-export-btn")!.addEventListener("click", () => {
         flushBlocks();
         const blob = new Blob([serializeProjectV3(project)], { type: "application/json" });
@@ -483,7 +527,7 @@ export function mountCreateExplorer(
         }
       });
       editor.querySelector("#v3-new-from-template-btn")!.addEventListener("click", () => {
-        if (!window.confirm("テンプレート選択に進みます。今のプロジェクトは置き換わります。よろしいですか？")) return;
+        // テンプレートは眺めるだけでは何も変わらないので、確認は「作成」時点に寄せる
         selection = { kind: "wizard" };
         renderTree();
         renderEditor();
@@ -734,6 +778,13 @@ export function mountCreateExplorer(
             : ""
         }
         <button type="button" id="v3-ch-draw-tiles" class="secondary">ビットマップ全体を描画するブロックを追加</button>
+        <div class="block-edit-toolbar">
+          <button type="button" id="v3-blocks-undo" class="secondary">↩ 元に戻す</button>
+          <button type="button" id="v3-blocks-redo" class="secondary">↪ やり直す</button>
+          <button type="button" id="v3-blocks-delete" class="secondary">選択中のブロックを削除</button>
+          <span class="muted" id="v3-blocks-status"></span>
+        </div>
+        <p class="muted">ブロックの置き方：左のカテゴリからブロックをドラッグして置きます。消したいときは、ブロックをクリックして選んでから「選択中のブロックを削除」を押してください（ゴミ箱へドラッグでも消せます）。</p>
         <div id="v3-ch-blocks" class="block-workspace create-v3-blocks"></div>
         <button type="button" id="v3-delete" class="danger">削除</button>
       `;
@@ -762,6 +813,7 @@ export function mountCreateExplorer(
       });
       editor.querySelector("#v3-delete")!.addEventListener("click", () => deleteCharacter(ch.id));
       mountPartBlocks(editor.querySelector<HTMLElement>("#v3-ch-blocks")!, ch.id);
+      wireBlockToolbar(editor);
       editor.querySelector("#v3-ch-draw-tiles")!.addEventListener("click", () => {
         if (!blockWorkspace || blockTarget?.id !== ch.id) return;
         const bmp = project.bitmaps[ch.bitmapId];
@@ -865,6 +917,13 @@ export function mountCreateExplorer(
         </div>`
             : ""
         }
+        <div class="block-edit-toolbar">
+          <button type="button" id="v3-blocks-undo" class="secondary">↩ 元に戻す</button>
+          <button type="button" id="v3-blocks-redo" class="secondary">↪ やり直す</button>
+          <button type="button" id="v3-blocks-delete" class="secondary">選択中のブロックを削除</button>
+          <span class="muted" id="v3-blocks-status"></span>
+        </div>
+        <p class="muted">ブロックの置き方：左のカテゴリからブロックをドラッグして置きます。消したいときは、ブロックをクリックして選んでから「選択中のブロックを削除」を押してください（ゴミ箱へドラッグでも消せます）。</p>
         <div id="v3-sc-blocks" class="block-workspace create-v3-blocks"></div>
         <button type="button" id="v3-delete" class="danger">シーン削除</button>
       `;
@@ -908,6 +967,7 @@ export function mountCreateExplorer(
       });
       editor.querySelector("#v3-delete")!.addEventListener("click", () => deleteScene(sc.id));
       mountSceneBlocks(editor.querySelector<HTMLElement>("#v3-sc-blocks")!, sc.id);
+      wireBlockToolbar(editor);
     }
   }
 

@@ -281,6 +281,40 @@ h1 .subtitle {
   margin-top: 8px;
 }
 
+.create-guide-box {
+  margin: 12px 0;
+  padding: 10px 14px;
+  border: 1px solid #4a7c59;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.create-guide-box h3 {
+  margin: 4px 0 6px;
+}
+
+.create-guide-box ol {
+  margin: 0 0 6px;
+  padding-left: 20px;
+}
+
+.block-edit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.mapper-details {
+  margin: 12px 0;
+}
+
+.mapper-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
 .mapper-cap-box {
   margin: 12px 0;
   padding: 10px 12px;
