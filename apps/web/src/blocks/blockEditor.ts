@@ -738,6 +738,125 @@ export function loadPlatformerGroundPartBlocks(workspace: Blockly.WorkspaceSvg):
   );
 }
 
+// --- テンプレート用シード（side_scroll） ---
+
+/**
+ * side_scroll テンプレ「Mario」相当のブロック。
+ * 主人公の動きは platformer の Hero と同一（dslHeroPlatformerMove）なのでローダーを共用する。
+ */
+export function loadSideScrollMarioPartBlocks(
+  workspace: Blockly.WorkspaceSvg,
+  opts: { groundY: number; spriteId: number; walkSpeed: number; dashSpeed: number; jumpFrames: number },
+): void {
+  loadPlatformerHeroPartBlocks(workspace, opts);
+}
+
+/** side_scroll テンプレ「Block」相当のブロック（足場ブロックを描くだけ）。 */
+export function loadSideScrollBlockPartBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  partShell(
+    ws,
+    [
+      ["x", 120],
+      ["y", 180],
+    ],
+    [drawSpriteStmt(ws, 2, selfGet(ws, "x"), selfGet(ws, "y"), 0, 1)],
+  );
+}
+
+/** side_scroll テンプレ「Flag」相当のブロック（ゴールの旗を描くだけ）。 */
+export function loadSideScrollFlagPartBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  partShell(
+    ws,
+    [
+      ["x", 220],
+      ["y", 160],
+      ["hx", 0],
+      ["hy", 0],
+    ],
+    [drawSpriteStmt(ws, 3, selfGet(ws, "x"), selfGet(ws, "y"), 0, 0)],
+  );
+}
+
+/** side_scroll テンプレ「Title」シーン相当のブロック。 */
+export function loadSideScrollTitleSceneBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  sceneShell(
+    ws,
+    [["titleMario", "Mario"]],
+    [
+      paletteStmt(ws, false, 0, 1, 33),
+      paletteStmt(ws, true, 0, 1, 34),
+      fillBgStmt(ws, 0),
+      instSet(ws, "titleMario", "x", 120),
+      instSet(ws, "titleMario", "y", 140),
+    ],
+    [
+      behaviorCall(ws, "Mario", "titleMario"),
+      ifStmt(ws, btnCond(ws, "start", "just"), [gotoSceneStmt(ws, "Main")]),
+    ],
+  );
+}
+
+/** side_scroll テンプレ「Main」シーン相当のブロック。 */
+export function loadSideScrollMainSceneBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  sceneShell(
+    ws,
+    [
+      ["mario", "Mario"],
+      ["block", "Block"],
+      ["flag", "Flag"],
+    ],
+    [
+      paletteStmt(ws, false, 0, 1, 33),
+      paletteStmt(ws, true, 0, 1, 34),
+      paletteStmt(ws, true, 1, 1, 16),
+      fillBgStmt(ws, 1),
+      setScrollStmt(ws, numBlock(ws, 0), numBlock(ws, 0)),
+      instSet(ws, "mario", "x", 40),
+      instSet(ws, "mario", "y", 180),
+      playSoundStmt(ws, "StageBgm"),
+    ],
+    [
+      behaviorCall(ws, "Mario", "mario"),
+      behaviorCall(ws, "Block", "block"),
+      behaviorCall(ws, "Flag", "flag"),
+      setScrollStmt(ws, instGet(ws, "mario", "x"), numBlock(ws, 0)),
+      overlapStmt(ws, "mario", "flag", 16, [
+        playSoundStmt(ws, "Goal"),
+        gotoSceneStmt(ws, "Clear"),
+      ]),
+    ],
+  );
+}
+
+/** side_scroll テンプレ「Clear」シーン相当のブロック。 */
+export function loadSideScrollClearSceneBlocks(workspace: Blockly.WorkspaceSvg): void {
+  const ws = workspace;
+  ws.clear();
+  sceneShell(
+    ws,
+    [["clearMario", "Mario"]],
+    [
+      paletteStmt(ws, false, 0, 1, 33),
+      paletteStmt(ws, true, 0, 1, 34),
+      fillBgStmt(ws, 0),
+      instSet(ws, "clearMario", "x", 120),
+      instSet(ws, "clearMario", "y", 120),
+    ],
+    [
+      behaviorCall(ws, "Mario", "clearMario"),
+      ifStmt(ws, btnCond(ws, "start", "just"), [gotoSceneStmt(ws, "Title")]),
+    ],
+  );
+}
+
 /**
  * ビットマップのタイル格子ぶん drawSprite をワークスペース末尾へ追加する。
  * 最大 4×4。X/Y は self.x+tx*8 / self.y+ty*8。

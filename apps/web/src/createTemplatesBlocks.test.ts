@@ -225,3 +225,145 @@ describe("platformer のブロック種（Phase C）", () => {
     120_000,
   );
 });
+
+const SS_BLOCK_CODE = [
+  "field x = 120;",
+  "field y = 180;",
+  "",
+  "behavior move(self) {",
+  "  drawSprite(2, self.x, self.y, 0, 1);",
+  "}",
+].join("\n");
+
+const SS_FLAG_CODE = [
+  "field x = 220;",
+  "field y = 160;",
+  "field hx = 0;",
+  "field hy = 0;",
+  "",
+  "behavior move(self) {",
+  "  drawSprite(3, self.x, self.y, 0, 0);",
+  "}",
+].join("\n");
+
+const SS_TITLE_CODE = [
+  "instance titleMario: Mario;",
+  "",
+  "function init() {",
+  "  setPalette(0, 1, 33, 0, 0);",
+  "  setSpritePalette(0, 1, 34, 0, 0);",
+  "  fillBackground(0);",
+  "  titleMario.x = 120;",
+  "  titleMario.y = 140;",
+  "}",
+  "",
+  "function update() {",
+  "  Mario.move(titleMario);",
+  "  if (btn.start_just_pressed) { gotoScene(Main); }",
+  "}",
+].join("\n");
+
+const SS_MAIN_CODE = [
+  "instance mario: Mario;",
+  "instance block: Block;",
+  "instance flag: Flag;",
+  "",
+  "function init() {",
+  "  setPalette(0, 1, 33, 0, 0);",
+  "  setSpritePalette(0, 1, 34, 0, 0);",
+  "  setSpritePalette(1, 1, 16, 0, 0);",
+  "  fillBackground(1);",
+  "  setScroll(0, 0);",
+  "  mario.x = 40;",
+  "  mario.y = 180;",
+  "  playSound(StageBgm);",
+  "}",
+  "",
+  "function update() {",
+  "  Mario.move(mario);",
+  "  Block.move(block);",
+  "  Flag.move(flag);",
+  "  setScroll(mario.x, 0);",
+  dslHitBox("mario", "flag", 16, ["playSound(Goal);", "gotoScene(Clear);"]),
+  "}",
+].join("\n");
+
+const SS_CLEAR_CODE = [
+  "instance clearMario: Mario;",
+  "",
+  "function init() {",
+  "  setPalette(0, 1, 33, 0, 0);",
+  "  setSpritePalette(0, 1, 34, 0, 0);",
+  "  fillBackground(0);",
+  "  clearMario.x = 120;",
+  "  clearMario.y = 120;",
+  "}",
+  "",
+  "function update() {",
+  "  Mario.move(clearMario);",
+  "  if (btn.start_just_pressed) { gotoScene(Title); }",
+  "}",
+].join("\n");
+
+describe("side_scroll のブロック種（Phase C）", () => {
+  it(
+    "全キャラ・全シーンにブロックが埋め込まれ、生成コードが従来コードと一致する",
+    () => {
+      const p = buildTemplateProjectV3("side_scroll", { mapperId: 0 });
+
+      for (const id of p.characterOrder) {
+        expect(isEmptyBlockState(p.characters[id]!.behaviorBlocks)).toBe(false);
+      }
+      for (const id of p.sceneOrder) {
+        expect(isEmptyBlockState(p.scenes[id]!.logicBlocks)).toBe(false);
+      }
+
+      expect(norm(charByName(p, "Mario").legacyCode ?? "")).toBe(
+        norm(dslHeroPlatformerMove({ groundY: 180, spriteId: 0 })),
+      );
+      expect(norm(charByName(p, "Block").legacyCode ?? "")).toBe(norm(SS_BLOCK_CODE));
+      expect(norm(charByName(p, "Flag").legacyCode ?? "")).toBe(norm(SS_FLAG_CODE));
+      expect(norm(sceneByName(p, "Title").legacyCode ?? "")).toBe(norm(SS_TITLE_CODE));
+      expect(norm(sceneByName(p, "Main").legacyCode ?? "")).toBe(norm(SS_MAIN_CODE));
+      expect(norm(sceneByName(p, "Clear").legacyCode ?? "")).toBe(norm(SS_CLEAR_CODE));
+    },
+    120_000,
+  );
+
+  it(
+    "調整（tuning）もブロック生成コードに反映される",
+    () => {
+      const p = buildTemplateProjectV3("side_scroll", {
+        mapperId: 0,
+        tuning: { speed: "fast", jump: "high" },
+      });
+      expect(norm(charByName(p, "Mario").legacyCode ?? "")).toBe(
+        norm(
+          dslHeroPlatformerMove({
+            groundY: 180,
+            spriteId: 0,
+            walkSpeed: 3,
+            dashSpeed: 5,
+            jumpFrames: 14,
+          }),
+        ),
+      );
+    },
+    120_000,
+  );
+
+  it(
+    "ブロック種入りの side_scroll が NROM ビルド＆コンパイルできる",
+    () => {
+      const v3 = buildTemplateProjectV3("side_scroll", { title: "t", mapperId: 0 });
+      const v2 = projectV3ToV2(v3);
+      const source = buildProjectSource(v2);
+      const assets = buildProjectAssets(v2);
+      const { sequences } = buildProjectSequences(v2);
+      const backgroundTiles = buildBackgroundTilesFromV3(v3);
+      const { rom } = compile(source, { ...assets, sequences, mapperId: 0, backgroundTiles });
+      expect(rom.byteLength).toBeGreaterThan(16);
+    },
+    120_000,
+  );
+});

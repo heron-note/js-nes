@@ -15,6 +15,12 @@ import {
   loadPlatformerHeroPartBlocks,
   loadPlatformerMainSceneBlocks,
   loadPlatformerTitleSceneBlocks,
+  loadSideScrollBlockPartBlocks,
+  loadSideScrollClearSceneBlocks,
+  loadSideScrollFlagPartBlocks,
+  loadSideScrollMainSceneBlocks,
+  loadSideScrollMarioPartBlocks,
+  loadSideScrollTitleSceneBlocks,
 } from "./blocks/blockEditor.js";
 import { PART_TOOLBOX, SCENE_TOOLBOX } from "./blocks/toolbox.js";
 import {
@@ -770,7 +776,58 @@ function buildSideScroll(opts: BuildOpts): ProjectV3 {
   place(project, "Mario", 40, 180, "Main");
   place(project, "Block", 120, 180, "Main");
   place(project, "Flag", 220, 160, "Main");
+  seedSideScrollBlocks(project, opts);
   return project;
+}
+
+/**
+ * side_scroll のキャラ／シーンへブロックの種を埋め込む（platformer の seedPlatformerBlocks と同方式）。
+ * capture はブラウザ DOM が必要。失敗時は legacyCode のままにする。
+ * 生成コードが従来の legacyCode と一致することは createTemplatesBlocks.test.ts で検証する。
+ * 主人公の歩行速度・ジャンプの高さ（B1 の調整値）は heroMoveTuning 経由でブロック側にも反映する。
+ */
+function seedSideScrollBlocks(project: ProjectV3, opts: BuildOpts): void {
+  if (typeof document === "undefined") return;
+  try {
+    const hero = heroMoveTuning(opts);
+    for (const id of project.characterOrder) {
+      const ch = project.characters[id]!;
+      if (ch.name === "Mario") {
+        const c = capturePartBlockState(
+          (ws) => loadSideScrollMarioPartBlocks(ws, { groundY: 180, spriteId: 0, ...hero }),
+          PART_TOOLBOX,
+        );
+        ch.behaviorBlocks = c.blocks;
+        ch.legacyCode = c.code;
+      } else if (ch.name === "Block") {
+        const c = capturePartBlockState(loadSideScrollBlockPartBlocks, PART_TOOLBOX);
+        ch.behaviorBlocks = c.blocks;
+        ch.legacyCode = c.code;
+      } else if (ch.name === "Flag") {
+        const c = capturePartBlockState(loadSideScrollFlagPartBlocks, PART_TOOLBOX);
+        ch.behaviorBlocks = c.blocks;
+        ch.legacyCode = c.code;
+      }
+    }
+    for (const id of project.sceneOrder) {
+      const sc = project.scenes[id]!;
+      if (sc.name === "Title") {
+        const c = captureSceneBlockState(loadSideScrollTitleSceneBlocks, SCENE_TOOLBOX);
+        sc.logicBlocks = c.blocks;
+        sc.legacyCode = c.code;
+      } else if (sc.name === "Main") {
+        const c = captureSceneBlockState(loadSideScrollMainSceneBlocks, SCENE_TOOLBOX);
+        sc.logicBlocks = c.blocks;
+        sc.legacyCode = c.code;
+      } else if (sc.name === "Clear") {
+        const c = captureSceneBlockState(loadSideScrollClearSceneBlocks, SCENE_TOOLBOX);
+        sc.logicBlocks = c.blocks;
+        sc.legacyCode = c.code;
+      }
+    }
+  } catch {
+    // テスト環境など DOM 不完全時は legacyCode のままにする
+  }
 }
 
 function buildShmup(opts: BuildOpts): ProjectV3 {
