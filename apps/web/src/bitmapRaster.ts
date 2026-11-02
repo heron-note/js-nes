@@ -111,9 +111,22 @@ export function extractNesPaletteFromRgba(
   return [picked[0]!, picked[1]!, picked[2]!, picked[3]!];
 }
 
+/** 画像の入りかた： stretch=枠へ引き伸ばし / fit=縦横比を保って全体を収める / fill=枠いっぱいに拡大して切り取る。 */
+export type RasterFitMode = "stretch" | "fit" | "fill";
+
+/** 取り込み時の位置・拡大の微調整（offset は出力ピクセル単位、scale は倍率）。 */
+export interface RasterTransform {
+  mode?: RasterFitMode;
+  offsetX?: number;
+  offsetY?: number;
+  scale?: number;
+}
+
 /**
  * 画像ピクセルを指定タイルサイズの 0–3 配列へ。
  * pixels 長さ = tileWidth * tileHeight * 64。タイル行優先。
+ * transform 省略時は従来通り「全体を枠へ引き伸ばし」。
+ * fit / fill では画像の描画矩形を中央に置き、offset でずらす。矩形の外はスロット0。
  */
 export function rasterToBitmapPixels(
   rgba: Uint8ClampedArray,
@@ -122,10 +135,28 @@ export function rasterToBitmapPixels(
   tileWidth: number,
   tileHeight: number,
   paletteColors: [number, number, number, number],
+  transform?: RasterTransform,
 ): number[] {
   const outW = tileWidth * 8;
   const outH = tileHeight * 8;
   const pixels = new Array(tileWidth * tileHeight * 64).fill(0);
+
+  const mode = transform?.mode ?? "stretch";
+  const scaleMul = transform?.scale ?? 1;
+  const offX = transform?.offsetX ?? 0;
+  const offY = transform?.offsetY ?? 0;
+  let drawnW = outW * scaleMul;
+  let drawnH = outH * scaleMul;
+  if (mode !== "stretch" && srcW > 0 && srcH > 0) {
+    const base =
+      mode === "fit"
+        ? Math.min(outW / srcW, outH / srcH)
+        : Math.max(outW / srcW, outH / srcH);
+    drawnW = Math.max(1, srcW * base * scaleMul);
+    drawnH = Math.max(1, srcH * base * scaleMul);
+  }
+  const originX = (outW - drawnW) / 2 + offX;
+  const originY = (outH - drawnH) / 2 + offY;
 
   for (let ty = 0; ty < tileHeight; ty++) {
     for (let tx = 0; tx < tileWidth; tx++) {
@@ -136,14 +167,14 @@ export function rasterToBitmapPixels(
           const x = tx * 8 + px;
           const y = ty * 8 + py;
           let slot: 0 | 1 | 2 | 3 = 0;
-          if (x < outW && y < outH) {
-            const sx = Math.min(srcW - 1, Math.floor((x * srcW) / outW));
-            const sy = Math.min(srcH - 1, Math.floor((y * srcH) / outH));
+          const fx = ((x - originX) * srcW) / drawnW;
+          const fy = ((y - originY) * srcH) / drawnH;
+          if (fx >= 0 && fx < srcW && fy >= 0 && fy < srcH) {
+            const sx = Math.min(srcW - 1, Math.floor(fx));
+            const sy = Math.min(srcH - 1, Math.floor(fy));
             const si = (sy * srcW + sx) * 4;
             const a = rgba[si + 3] ?? 0;
-            if (a < 128) {
-              slot = 0;
-            } else {
+            if (a >= 128) {
               slot = nearestPaletteSlot(rgba[si]!, rgba[si + 1]!, rgba[si + 2]!, paletteColors);
             }
           }
@@ -195,6 +226,7 @@ export async function imageFileToBitmapWithPalette(
     tileWidth?: number;
     tileHeight?: number;
     fixedPalette?: [number, number, number, number];
+    transform?: RasterTransform;
   },
 ): Promise<{
   tileWidth: number;
@@ -208,7 +240,15 @@ export async function imageFileToBitmapWithPalette(
     opts?.tileWidth !== undefined && opts.tileHeight !== undefined
       ? { tileWidth: opts.tileWidth, tileHeight: opts.tileHeight }
       : suggestTileSize(width, height);
-  const pixels = rasterToBitmapPixels(rgba, width, height, size.tileWidth, size.tileHeight, colors);
+  const pixels = rasterToBitmapPixels(
+    rgba,
+    width,
+    height,
+    size.tileWidth,
+    size.tileHeight,
+    colors,
+    opts?.transform,
+  );
   return { ...size, pixels, colors };
 }
 
@@ -217,11 +257,13 @@ export async function imageFileToBitmapPixels(
   file: File,
   paletteColors: [number, number, number, number],
   size?: { tileWidth: number; tileHeight: number },
+  transform?: RasterTransform,
 ): Promise<{ tileWidth: number; tileHeight: number; pixels: number[] }> {
   const result = await imageFileToBitmapWithPalette(file, {
     fixedPalette: paletteColors,
     tileWidth: size?.tileWidth,
     tileHeight: size?.tileHeight,
+    transform,
   });
   return { tileWidth: result.tileWidth, tileHeight: result.tileHeight, pixels: result.pixels };
 }

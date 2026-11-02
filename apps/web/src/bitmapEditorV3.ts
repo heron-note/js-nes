@@ -3,7 +3,15 @@
  */
 
 import type { BitmapAsset, PaletteAsset } from "./projectV3.js";
-import { imageFileToBitmapWithPalette, nesIndexToCss } from "./bitmapRaster.js";
+import {
+  decodeImageFile,
+  extractNesPaletteFromRgba,
+  nesIndexToCss,
+  rasterToBitmapPixels,
+  suggestTileSize,
+  type RasterFitMode,
+  type RasterTransform,
+} from "./bitmapRaster.js";
 import {
   BITMAP_SIZE_PRESETS,
   BITMAP_TILE_MAX,
@@ -68,6 +76,35 @@ export function mountBitmapEditor(
       <p class="muted bmp-hint">
         既定は人型 16×16。弾は 8×8、ロゴは大きめプリセット＋「フィット」表示で全体を見ながら編集できます。
       </p>
+      <div class="bmp-import-panel" id="bmp-import-panel" hidden>
+        <p class="bmp-import-title">画像の取り込み調整（<span id="bmp-import-name"></span>）</p>
+        <div class="bmp-canvas-wrap">
+          <canvas id="bmp-import-preview" class="bmp-canvas"></canvas>
+        </div>
+        <div class="bmp-editor-toolbar">
+          <label>入りかた
+            <select id="bmp-fit">
+              <option value="fit" selected>全体を入れる（縦横比を保つ）</option>
+              <option value="fill">枠いっぱい（はみ出しは切り取り）</option>
+              <option value="stretch">引き伸ばし（今まで通り）</option>
+            </select>
+          </label>
+          <label>拡大
+            <input type="range" id="bmp-iscale" min="50" max="300" step="5" value="100" />
+            <span id="bmp-iscale-val">100%</span>
+          </label>
+        </div>
+        <div class="bmp-editor-toolbar">
+          <label>横の位置<input type="range" id="bmp-iox" min="-128" max="128" step="1" value="0" /></label>
+          <label>縦の位置<input type="range" id="bmp-ioy" min="-128" max="128" step="1" value="0" /></label>
+          <button type="button" id="bmp-icenter">中央に戻す</button>
+        </div>
+        <div class="bmp-editor-toolbar">
+          <button type="button" id="bmp-icommit">この内容で取り込む</button>
+          <button type="button" id="bmp-icancel">やめる</button>
+          <span class="muted">プレビューをドラッグしても位置を動かせます</span>
+        </div>
+      </div>
       <div class="bmp-swatches" id="bmp-swatches"></div>
       <div class="bmp-canvas-wrap">
         <canvas id="bmp-canvas" class="bmp-canvas"></canvas>
@@ -93,6 +130,18 @@ export function mountBitmapEditor(
   const ctx = canvas.getContext("2d")!;
   const nesGrid = container.querySelector<HTMLDivElement>("#bmp-nes-grid")!;
   const statusEl = container.querySelector<HTMLParagraphElement>("#bmp-status")!;
+  const importPanel = container.querySelector<HTMLDivElement>("#bmp-import-panel")!;
+  const importName = container.querySelector<HTMLSpanElement>("#bmp-import-name")!;
+  const importPreview = container.querySelector<HTMLCanvasElement>("#bmp-import-preview")!;
+  const importCtx = importPreview.getContext("2d")!;
+  const fitSelect = container.querySelector<HTMLSelectElement>("#bmp-fit")!;
+  const iscaleRange = container.querySelector<HTMLInputElement>("#bmp-iscale")!;
+  const iscaleVal = container.querySelector<HTMLSpanElement>("#bmp-iscale-val")!;
+  const ioxRange = container.querySelector<HTMLInputElement>("#bmp-iox")!;
+  const ioyRange = container.querySelector<HTMLInputElement>("#bmp-ioy")!;
+  const icenterBtn = container.querySelector<HTMLButtonElement>("#bmp-icenter")!;
+  const icommitBtn = container.querySelector<HTMLButtonElement>("#bmp-icommit")!;
+  const icancelBtn = container.querySelector<HTMLButtonElement>("#bmp-icancel")!;
 
   function currentPixelScale(): number {
     const bmp = opts.getBitmap();
@@ -158,6 +207,36 @@ export function mountBitmapEditor(
     }
   }
 
+  /** ピクセル配列を指定コンテキストへ描く（スロット0は市松模様）。 */
+  function paintPixels(
+    target: CanvasRenderingContext2D,
+    pixels: number[],
+    tileWidth: number,
+    tileHeight: number,
+    colors: [number, number, number, number],
+    scale: number,
+  ): void {
+    for (let ty = 0; ty < tileHeight; ty++) {
+      for (let tx = 0; tx < tileWidth; tx++) {
+        const tileIndex = ty * tileWidth + tx;
+        const base = tileIndex * 64;
+        for (let py = 0; py < 8; py++) {
+          for (let px = 0; px < 8; px++) {
+            const slot = (pixels[base + py * 8 + px] ?? 0) & 3;
+            const x = (tx * 8 + px) * scale;
+            const y = (ty * 8 + py) * scale;
+            if (slot === 0) {
+              target.fillStyle = ((tx * 8 + px) + (ty * 8 + py)) % 2 === 0 ? "#2a2e3a" : "#1e2230";
+            } else {
+              target.fillStyle = nesIndexToCss(colors[slot]!);
+            }
+            target.fillRect(x, y, scale, scale);
+          }
+        }
+      }
+    }
+  }
+
   function renderCanvas(): void {
     const bmp = opts.getBitmap();
     const pal = opts.getPalette();
@@ -168,25 +247,7 @@ export function mountBitmapEditor(
     canvas.height = h * scale;
     ctx.imageSmoothingEnabled = false;
 
-    for (let ty = 0; ty < bmp.tileHeight; ty++) {
-      for (let tx = 0; tx < bmp.tileWidth; tx++) {
-        const tileIndex = ty * bmp.tileWidth + tx;
-        const base = tileIndex * 64;
-        for (let py = 0; py < 8; py++) {
-          for (let px = 0; px < 8; px++) {
-            const slot = (bmp.pixels[base + py * 8 + px] ?? 0) & 3;
-            const x = (tx * 8 + px) * scale;
-            const y = (ty * 8 + py) * scale;
-            if (slot === 0) {
-              ctx.fillStyle = ((tx * 8 + px) + (ty * 8 + py)) % 2 === 0 ? "#2a2e3a" : "#1e2230";
-            } else {
-              ctx.fillStyle = nesIndexToCss(pal.colors[slot]!);
-            }
-            ctx.fillRect(x, y, scale, scale);
-          }
-        }
-      }
-    }
+    paintPixels(ctx, bmp.pixels, bmp.tileWidth, bmp.tileHeight, pal.colors, scale);
 
     if (scale >= 4) {
       ctx.strokeStyle = "rgba(255,255,255,0.12)";
@@ -256,52 +317,141 @@ export function mountBitmapEditor(
     renderCanvas();
   }
 
-  async function importImage(file: File, mode: "fixed" | "extract"): Promise<void> {
-    const bmp = opts.getBitmap();
-    statusEl.textContent = "画像を変換中…";
-    try {
-      if (mode === "fixed") {
-        const pal = opts.getPalette();
-        const result = await imageFileToBitmapWithPalette(file, {
-          fixedPalette: pal.colors,
-          tileWidth: bmp.tileWidth,
-          tileHeight: bmp.tileHeight,
-        });
-        bmp.pixels = result.pixels;
-        opts.onChange();
-        renderCanvas();
-        statusEl.textContent = `「${file.name}」を現在のパレット・サイズで取り込みました`;
-        return;
-      }
+  /** 調整中の取り込み。確定するまでビットマップ本体には触れない。 */
+  interface PendingImport {
+    fileName: string;
+    mode: "fixed" | "extract";
+    rgba: Uint8ClampedArray;
+    width: number;
+    height: number;
+    colors: [number, number, number, number];
+    tileWidth: number;
+    tileHeight: number;
+  }
+  let pending: PendingImport | null = null;
+  let importPreviewScale = 1;
 
-      const result = await imageFileToBitmapWithPalette(file);
-      const { tileWidth, tileHeight } = clampTileSize(result.tileWidth, result.tileHeight);
-      const pal = opts.resolvePaletteFromImport(result.colors, `${file.name} のパレット`);
-      // 推定サイズが clamp された場合は再ラスタが必要だが、取り込み結果をそのまま縮退コピー
-      if (tileWidth === result.tileWidth && tileHeight === result.tileHeight) {
-        bmp.pixels = result.pixels;
+  function importTransform(): RasterTransform {
+    return {
+      mode: fitSelect.value as RasterFitMode,
+      offsetX: Number(ioxRange.value) | 0,
+      offsetY: Number(ioyRange.value) | 0,
+      scale: (Number(iscaleRange.value) || 100) / 100,
+    };
+  }
+
+  function renderImportPreview(): void {
+    if (!pending) return;
+    const pixels = rasterToBitmapPixels(
+      pending.rgba,
+      pending.width,
+      pending.height,
+      pending.tileWidth,
+      pending.tileHeight,
+      pending.colors,
+      importTransform(),
+    );
+    const w = pending.tileWidth * 8;
+    const h = pending.tileHeight * 8;
+    importPreviewScale = Math.max(1, Math.min(24, Math.floor(384 / w)));
+    importPreview.width = w * importPreviewScale;
+    importPreview.height = h * importPreviewScale;
+    importCtx.imageSmoothingEnabled = false;
+    paintPixels(
+      importCtx,
+      pixels,
+      pending.tileWidth,
+      pending.tileHeight,
+      pending.colors,
+      importPreviewScale,
+    );
+  }
+
+  function closeImportPanel(): void {
+    pending = null;
+    importPanel.hidden = true;
+  }
+
+  async function startImport(file: File, mode: "fixed" | "extract"): Promise<void> {
+    statusEl.textContent = "画像を読み込み中…";
+    try {
+      const decoded = await decodeImageFile(file);
+      const bmp = opts.getBitmap();
+      let colors: [number, number, number, number];
+      let tileWidth: number;
+      let tileHeight: number;
+      if (mode === "fixed") {
+        colors = [...opts.getPalette().colors] as [number, number, number, number];
+        tileWidth = bmp.tileWidth;
+        tileHeight = bmp.tileHeight;
       } else {
-        const next = new Array(tileWidth * tileHeight * 64).fill(0);
-        for (let ty = 0; ty < Math.min(tileHeight, result.tileHeight); ty++) {
-          for (let tx = 0; tx < Math.min(tileWidth, result.tileWidth); tx++) {
-            const srcBase = (ty * result.tileWidth + tx) * 64;
-            const dstBase = (ty * tileWidth + tx) * 64;
-            for (let i = 0; i < 64; i++) next[dstBase + i] = result.pixels[srcBase + i] ?? 0;
-          }
-        }
-        bmp.pixels = next;
+        colors = extractNesPaletteFromRgba(decoded.rgba, decoded.width, decoded.height);
+        const suggested = suggestTileSize(decoded.width, decoded.height);
+        const clamped = clampTileSize(suggested.tileWidth, suggested.tileHeight);
+        tileWidth = clamped.tileWidth;
+        tileHeight = clamped.tileHeight;
       }
-      bmp.tileWidth = tileWidth;
-      bmp.tileHeight = tileHeight;
+      pending = {
+        fileName: file.name,
+        mode,
+        rgba: decoded.rgba,
+        width: decoded.width,
+        height: decoded.height,
+        colors,
+        tileWidth,
+        tileHeight,
+      };
+      fitSelect.value = "fit";
+      iscaleRange.value = "100";
+      iscaleVal.textContent = "100%";
+      ioxRange.min = String(-tileWidth * 8);
+      ioxRange.max = String(tileWidth * 8);
+      ioxRange.value = "0";
+      ioyRange.min = String(-tileHeight * 8);
+      ioyRange.max = String(tileHeight * 8);
+      ioyRange.value = "0";
+      importName.textContent = file.name;
+      importPanel.hidden = false;
+      renderImportPreview();
+      statusEl.textContent =
+        mode === "fixed"
+          ? "位置と大きさを調整して「この内容で取り込む」を押してください（今のパレット・サイズで取り込みます）"
+          : "位置と大きさを調整して「この内容で取り込む」を押してください（パレットとサイズは画像から自動で決めます）";
+    } catch (err: unknown) {
+      statusEl.textContent = err instanceof Error ? err.message : String(err);
+    }
+  }
+
+  function commitImport(): void {
+    if (!pending) return;
+    const bmp = opts.getBitmap();
+    const pixels = rasterToBitmapPixels(
+      pending.rgba,
+      pending.width,
+      pending.height,
+      pending.tileWidth,
+      pending.tileHeight,
+      pending.colors,
+      importTransform(),
+    );
+    if (pending.mode === "fixed") {
+      bmp.pixels = pixels;
+      opts.onChange();
+      renderCanvas();
+      statusEl.textContent = `「${pending.fileName}」を現在のパレット・サイズで取り込みました`;
+    } else {
+      const pal = opts.resolvePaletteFromImport(pending.colors, `${pending.fileName} のパレット`);
+      bmp.tileWidth = pending.tileWidth;
+      bmp.tileHeight = pending.tileHeight;
+      bmp.pixels = pixels;
       bmp.paletteId = pal.id;
       opts.onChange();
       syncSizeInputs();
       renderSwatches();
       renderCanvas();
-      statusEl.textContent = `「${file.name}」を取り込み（パレット「${pal.name}」）`;
-    } catch (err: unknown) {
-      statusEl.textContent = err instanceof Error ? err.message : String(err);
+      statusEl.textContent = `「${pending.fileName}」を取り込み（パレット「${pal.name}」）`;
     }
+    closeImportPanel();
   }
 
   const onPointerDown = (e: PointerEvent) => {
@@ -343,7 +493,7 @@ export function mountBitmapEditor(
   uploadInput.addEventListener("change", () => {
     const file = uploadInput.files?.[0];
     uploadInput.value = "";
-    if (file) void importImage(file, "fixed");
+    if (file) void startImport(file, "fixed");
   });
 
   uploadAutoBtn.addEventListener("click", () => {
@@ -352,10 +502,60 @@ export function mountBitmapEditor(
     input.accept = "image/png,image/jpeg,image/webp,image/gif";
     input.addEventListener("change", () => {
       const file = input.files?.[0];
-      if (file) void importImage(file, "extract");
+      if (file) void startImport(file, "extract");
     });
     input.click();
   });
+
+  fitSelect.addEventListener("change", () => renderImportPreview());
+  iscaleRange.addEventListener("input", () => {
+    iscaleVal.textContent = `${iscaleRange.value}%`;
+    renderImportPreview();
+  });
+  ioxRange.addEventListener("input", () => renderImportPreview());
+  ioyRange.addEventListener("input", () => renderImportPreview());
+  icenterBtn.addEventListener("click", () => {
+    ioxRange.value = "0";
+    ioyRange.value = "0";
+    iscaleRange.value = "100";
+    iscaleVal.textContent = "100%";
+    renderImportPreview();
+  });
+  icommitBtn.addEventListener("click", () => commitImport());
+  icancelBtn.addEventListener("click", () => {
+    closeImportPanel();
+    statusEl.textContent = "取り込みをやめました";
+  });
+
+  let importDrag: { startX: number; startY: number; ox: number; oy: number } | null = null;
+  importPreview.addEventListener("pointerdown", (e) => {
+    importDrag = {
+      startX: e.clientX,
+      startY: e.clientY,
+      ox: Number(ioxRange.value) | 0,
+      oy: Number(ioyRange.value) | 0,
+    };
+    importPreview.setPointerCapture(e.pointerId);
+  });
+  importPreview.addEventListener("pointermove", (e) => {
+    if (!importDrag) return;
+    const rect = importPreview.getBoundingClientRect();
+    const cssPerCanvasPx = rect.width > 0 ? importPreview.width / rect.width : 1;
+    const dx = Math.round(((e.clientX - importDrag.startX) * cssPerCanvasPx) / importPreviewScale);
+    const dy = Math.round(((e.clientY - importDrag.startY) * cssPerCanvasPx) / importPreviewScale);
+    ioxRange.value = String(
+      Math.max(Number(ioxRange.min), Math.min(Number(ioxRange.max), importDrag.ox + dx)),
+    );
+    ioyRange.value = String(
+      Math.max(Number(ioyRange.min), Math.min(Number(ioyRange.max), importDrag.oy + dy)),
+    );
+    renderImportPreview();
+  });
+  const endImportDrag = () => {
+    importDrag = null;
+  };
+  importPreview.addEventListener("pointerup", endImportDrag);
+  importPreview.addEventListener("pointercancel", endImportDrag);
 
   const onResize = () => {
     if (zoom === "fit") renderCanvas();

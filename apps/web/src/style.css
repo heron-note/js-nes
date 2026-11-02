@@ -695,6 +695,29 @@ h1 .subtitle {
   font-size: 0.8rem;
 }
 
+.bmp-import-panel {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  padding: 10px;
+  margin: 0 0 12px;
+}
+
+.bmp-import-title {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.bmp-import-panel .bmp-canvas-wrap {
+  margin-bottom: 8px;
+}
+
+.bmp-editor-toolbar input[type="range"] {
+  width: 9rem;
+  accent-color: var(--accent, #5af);
+}
+
 .bmp-swatches {
   display: flex;
   gap: 8px;
